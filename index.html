@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClassPulse — Explainable AI for Early Academic Support</title>
+  <meta name="description"
+    content="ClassPulse helps teachers detect at-risk students early using transparent, rule-based alerts backed by attendance and assessment data." />
+
+  <!-- Supabase JS (v2 CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+     TOAST CONTAINER
+═══════════════════════════════════════════════════════════ -->
+  <div id="toast-container"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+     AUTH SECTION
+═══════════════════════════════════════════════════════════ -->
+  <section id="auth-section" style="display:flex">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="logo-icon">
+          <!-- Pulse / chart icon -->
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3.5 18.5l5-5 4 4 5-6.5" stroke="white" stroke-width="2.2" stroke-linecap="round"
+              stroke-linejoin="round" fill="none" />
+          </svg>
+        </div>
+        <h1>ClassPulse</h1>
+        <p>Explainable AI for Early Academic Support</p>
+      </div>
+
+      <!-- Configuration warning -->
+      <div id="config-banner" class="config-banner">
+        ⚠ <strong>Setup required:</strong> Open <code>app.js</code> and replace
+        <code>YOUR_SUPABASE_URL</code> and <code>YOUR_SUPABASE_ANON_KEY</code>
+        with your actual Supabase project credentials before using the app.
+      </div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Sign In</button>
+        <button class="auth-tab" data-tab="register">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <div id="login-form">
+        <form id="form-login" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="login-email">Email <span>*</span></label>
+            <input id="login-email" type="email" class="form-input" placeholder="teacher@school.edu"
+              autocomplete="email" />
+            <div class="form-error" data-error="login-email"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="login-pass">Password <span>*</span></label>
+            <input id="login-pass" type="password" class="form-input" placeholder="••••••••"
+              autocomplete="current-password" />
+            <div class="form-error" data-error="login-pass"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:.25rem">Sign
+            In</button>
+        </form>
+      </div>
+
+      <!-- Register Form -->
+      <div id="register-form" style="display:none">
+        <form id="form-register" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="reg-email">Email <span>*</span></label>
+            <input id="reg-email" type="email" class="form-input" placeholder="teacher@school.edu"
+              autocomplete="email" />
+            <div class="form-error" data-error="reg-email"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reg-pass">Password <span>*</span></label>
+            <input id="reg-pass" type="password" class="form-input" placeholder="Min 6 characters"
+              autocomplete="new-password" />
+            <div class="form-error" data-error="reg-pass"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reg-pass2">Confirm Password <span>*</span></label>
+            <input id="reg-pass2" type="password" class="form-input" placeholder="Repeat password"
+              autocomplete="new-password" />
+            <div class="form-error" data-error="reg-pass2"></div>
+          </div>
+          <button type="submit" class="btn btn-primary"
+            style="width:100%;justify-content:center;margin-top:.25rem">Create Account</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════
+     APP SECTION
+═══════════════════════════════════════════════════════════ -->
+  <div id="app-section">
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo-icon">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3.5 18.5l5-5 4 4 5-6.5" stroke="white" stroke-width="2.2" stroke-linecap="round"
+              stroke-linejoin="round" fill="none" />
+          </svg>
+        </div>
+        <span class="sidebar-brand">ClassPulse</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Main</div>
+
+        <button class="nav-item active" data-page="page-dashboard">
+          <!-- Home icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+          </svg>
+          Dashboard
+        </button>
+
+        <button class="nav-item" data-page="page-students">
+          <!-- People icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+          </svg>
+          Students
+        </button>
+
+        <button class="nav-item" data-page="page-attendance">
+          <!-- Calendar icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2zm0 18H4V8h16v13z" />
+          </svg>
+          Attendance
+        </button>
+
+        <button class="nav-item" data-page="page-assessments">
+          <!-- Assignment icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 3H5c-1.1 0-2 .9-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+          </svg>
+          Assessments
+        </button>
+
+        <div class="nav-section-label">Support</div>
+
+        <button class="nav-item" data-page="page-followups">
+          <!-- Check circle icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+          </svg>
+          Follow-ups
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-avatar"><span id="user-avatar-text">?</span></div>
+        <div class="user-info">
+          <div class="user-name" id="user-name-display">Teacher</div>
+          <div class="user-role">Teacher</div>
+        </div>
+        <button class="btn-logout" id="btn-logout" title="Sign out">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
+          </svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── Main Content ── -->
+    <div class="main-content">
+      <!-- Topbar -->
+      <header class="topbar">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
+          </svg>
+        </button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+      </header>
+
+      <main class="page-content">
+
+        <!-- ════════════════════════════════════════════
+           DASHBOARD PAGE
+      ════════════════════════════════════════════ -->
+        <div class="page active" id="page-dashboard">
+
+          <div class="section-header">
+            <h2>Dashboard</h2>
+          </div>
+
+          <!-- Stats -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon blue">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                </svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">Total Students</div>
+                <div class="stat-value" id="stat-students">—</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon green">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2zm0 18H4V8h16v13z" />
+                </svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">Avg. Attendance</div>
+                <div class="stat-value" id="stat-avg-att">—</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon yellow">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                </svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">Total Alerts</div>
+                <div class="stat-value" id="stat-alerts">—</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon red">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                </svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-label">At-Risk Students</div>
+                <div class="stat-value" id="stat-at-risk">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart + Alerts -->
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:1.25rem;flex-wrap:wrap">
+            <div class="card" style="min-width:0">
+              <div class="card-header">
+                <h3>Attendance Overview</h3>
+                <span style="font-size:.75rem;color:var(--text-muted)">(Top 12 students)</span>
+              </div>
+              <div class="chart-container">
+                <canvas id="dash-chart"></canvas>
+              </div>
+            </div>
+
+            <div class="card" style="min-width:0">
+              <div class="card-header">
+                <h3>
+                  <svg viewBox="0 0 24 24" fill="currentColor"
+                    style="width:16px;height:16px;color:var(--warning);margin-right:.3rem">
+                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                  </svg>
+                  Active Alerts
+                </h3>
+              </div>
+              <div id="dashboard-alerts" class="alerts-list">
+                <div class="loading-state">
+                  <div class="spinner"></div>Loading…
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- How Alerts Work (transparency) -->
+          <div class="card" style="margin-top:0">
+            <div class="card-header">
+              <h3>📖 How Alerts Are Generated</h3>
+            </div>
+            <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
+              ClassPulse uses simple, transparent rules — no machine learning or black-box models.
+              Every alert can be traced back to a specific threshold:
+            </p>
+            <div
+              style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem;font-size:.82rem">
+              <div
+                style="background:var(--danger-light);padding:.75rem;border-radius:var(--radius);border-left:3px solid var(--danger)">
+                <strong>Critical Attendance</strong><br>Below 60% — immediate action required
+              </div>
+              <div
+                style="background:var(--danger-light);padding:.75rem;border-radius:var(--radius);border-left:3px solid var(--danger)">
+                <strong>Low Attendance</strong><br>Below 75% — scheduled check-in needed
+              </div>
+              <div
+                style="background:var(--danger-light);padding:.75rem;border-radius:var(--radius);border-left:3px solid var(--danger)">
+                <strong>Failing Marks</strong><br>Average below 33% — remedial sessions
+              </div>
+              <div
+                style="background:var(--warning-light);padding:.75rem;border-radius:var(--radius);border-left:3px solid var(--warning)">
+                <strong>Low Marks</strong><br>Average 33–40% — concept review needed
+              </div>
+              <div
+                style="background:var(--warning-light);padding:.75rem;border-radius:var(--radius);border-left:3px solid var(--warning)">
+                <strong>Declining Performance</strong><br>Recent scores dropped 10+ pp vs. earlier assessments
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════════════════════════════════════════
+           STUDENTS PAGE
+      ════════════════════════════════════════════ -->
+        <div class="page" id="page-students">
+          <div class="section-header">
+            <h2>Students</h2>
+            <div class="search-wrapper">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16a6.47 6.47 0 004.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 115 9.5 4.5 4.5 0 019.5 14z" />
+              </svg>
+              <input id="students-search" class="search-input" type="text" placeholder="Search name, roll, course…" />
+            </div>
+            <button id="btn-add-student" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+              </svg>
+              Add Student
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Roll No.</th>
+                    <th>Course</th>
+                    <th>Attendance</th>
+                    <th>Avg Marks</th>
+                    <th>Alerts</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="students-tbody">
+                  <tr>
+                    <td colspan="7">
+                      <div class="loading-state">
+                        <div class="spinner"></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════════════════════════════════════════
+           ATTENDANCE PAGE
+      ════════════════════════════════════════════ -->
+        <div class="page" id="page-attendance">
+          <div class="section-header">
+            <h2>Attendance</h2>
+            <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+              <label class="form-label" style="margin:0;white-space:nowrap">Date:</label>
+              <input id="att-date" type="date" class="form-input" style="width:auto" />
+            </div>
+          </div>
+
+          <!-- Mark Attendance Grid -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Mark Attendance</h3>
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Roll No.</th>
+                    <th>Course / Sem</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="att-grid-tbody">
+                  <tr>
+                    <td colspan="4">
+                      <div class="loading-state">
+                        <div class="spinner"></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Attendance History -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Attendance History</h3>
+              <select id="att-history-student" class="form-select" style="width:auto;max-width:220px">
+                <option value="">Select student…</option>
+              </select>
+              <button id="btn-att-history" class="btn btn-outline btn-sm">View</button>
+            </div>
+            <div id="att-history-section" style="display:none">
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="att-history-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════════════════════════════════════════
+           ASSESSMENTS PAGE
+      ════════════════════════════════════════════ -->
+        <div class="page" id="page-assessments">
+          <div class="section-header">
+            <h2>Assessments &amp; Marks</h2>
+            <button id="btn-add-assessment" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+              </svg>
+              New Assessment
+            </button>
+          </div>
+          <div id="assessment-list">
+            <div class="loading-state">
+              <div class="spinner"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ════════════════════════════════════════════
+           FOLLOW-UPS PAGE
+      ════════════════════════════════════════════ -->
+        <div class="page" id="page-followups">
+          <div class="section-header">
+            <h2>Follow-ups</h2>
+            <div style="display:flex;gap:.4rem">
+              <button class="btn btn-sm btn-outline followup-filter-btn active" data-filter="all">All</button>
+              <button class="btn btn-sm btn-outline followup-filter-btn" data-filter="pending">Pending</button>
+              <button class="btn btn-sm btn-outline followup-filter-btn" data-filter="in_progress">In Progress</button>
+              <button class="btn btn-sm btn-outline followup-filter-btn" data-filter="resolved">Resolved</button>
+            </div>
+            <button id="btn-add-followup" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+              </svg>
+              Log Follow-up
+            </button>
+          </div>
+          <div class="card">
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Alert Type</th>
+                    <th>Notes</th>
+                    <th>Status</th>
+                    <th>Update</th>
+                  </tr>
+                </thead>
+                <tbody id="followups-tbody">
+                  <tr>
+                    <td colspan="5">
+                      <div class="loading-state">
+                        <div class="spinner"></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div><!-- /main-content -->
+  </div><!-- /app-section -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════════════════════ -->
+
+  <!-- ── Add/Edit Student ── -->
+  <div class="modal-overlay" id="modal-student">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="student-modal-title">
+      <div class="modal-header">
+        <h3 id="student-modal-title">Add Student</h3>
+        <button class="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="form-student" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="s-name">Full Name <span>*</span></label>
+              <input id="s-name" type="text" class="form-input" placeholder="e.g. Aisha Khan" />
+              <div class="form-error" data-error="s-name"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="s-roll">Roll Number <span>*</span></label>
+              <input id="s-roll" type="text" class="form-input" placeholder="e.g. CS2024001" />
+              <div class="form-error" data-error="s-roll"></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="s-course">Course <span>*</span></label>
+              <input id="s-course" type="text" class="form-input" placeholder="e.g. B.Tech CSE" />
+              <div class="form-error" data-error="s-course"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="s-semester">Semester <span>*</span></label>
+              <select id="s-semester" class="form-select">
+                <option value="">Select…</option>
+                <option value="1">Semester 1</option>
+                <option value="2">Semester 2</option>
+                <option value="3">Semester 3</option>
+                <option value="4">Semester 4</option>
+                <option value="5">Semester 5</option>
+                <option value="6">Semester 6</option>
+                <option value="7">Semester 7</option>
+                <option value="8">Semester 8</option>
+              </select>
+              <div class="form-error" data-error="s-semester"></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="s-email">Email</label>
+              <input id="s-email" type="email" class="form-input" placeholder="student@example.com" />
+              <div class="form-error" data-error="s-email"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="s-phone">Phone</label>
+              <input id="s-phone" type="tel" class="form-input" placeholder="+91 9876543210" />
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:0;margin-top:.5rem;border:none">
+            <button type="button" class="btn btn-outline modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Student</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Student Detail ── -->
+  <div class="modal-overlay" id="modal-student-detail">
+    <div class="modal" style="max-width:680px" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="detail-student-name">Student Detail</h3>
+        <button class="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- Info -->
+        <div class="detail-grid" id="detail-info"></div>
+
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchDetailTab('attendance', this)">Attendance</button>
+          <button class="tab-btn" onclick="switchDetailTab('marks', this)">Marks</button>
+          <button class="tab-btn" onclick="switchDetailTab('chart', this)">Performance Chart</button>
+          <button class="tab-btn" onclick="switchDetailTab('alerts', this)">Alerts</button>
+        </div>
+
+        <div id="detail-tab-attendance">
+          <div id="detail-attendance"></div>
+        </div>
+        <div id="detail-tab-marks" style="display:none">
+          <div id="detail-marks"></div>
+        </div>
+        <div id="detail-tab-chart" style="display:none">
+          <div class="chart-container"><canvas id="detail-chart"></canvas></div>
+        </div>
+        <div id="detail-tab-alerts" style="display:none">
+          <div id="detail-alerts"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── New Assessment ── -->
+  <div class="modal-overlay" id="modal-assessment">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>New Assessment</h3>
+        <button class="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="form-assessment" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="a-name">Assessment Name <span>*</span></label>
+            <input id="a-name" type="text" class="form-input" placeholder="e.g. Mid-Term Test 1" />
+            <div class="form-error" data-error="a-name"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="a-max">Max Marks <span>*</span></label>
+              <input id="a-max" type="number" class="form-input" min="1" placeholder="e.g. 100" />
+              <div class="form-error" data-error="a-max"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="a-date">Date <span>*</span></label>
+              <input id="a-date" type="date" class="form-input" />
+              <div class="form-error" data-error="a-date"></div>
+            </div>
+          </div>
+          <div class="modal-footer" style="padding:0;margin-top:.5rem;border:none">
+            <button type="button" class="btn btn-outline modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Assessment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Mark Entry ── -->
+  <div class="modal-overlay" id="modal-mark-entry">
+    <div class="modal" style="max-width:600px" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3 id="mark-entry-title">Enter Marks</h3>
+        <button class="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Roll No.</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="mark-entry-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline modal-close">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-save-marks">Save Marks</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Log Follow-up ── -->
+  <div class="modal-overlay" id="modal-followup">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <h3>Log Follow-up</h3>
+        <button class="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="form-followup" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="fu-student">Student <span>*</span></label>
+            <select id="fu-student" class="form-select">
+              <option value="">Select student…</option>
+            </select>
+            <div class="form-error" data-error="fu-student"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fu-alert-type">Alert Type <span>*</span></label>
+            <select id="fu-alert-type" class="form-select">
+              <option value="">Select type…</option>
+              <option value="LOW_ATTENDANCE">Low Attendance</option>
+              <option value="VERY_LOW_ATTENDANCE">Critical Attendance</option>
+              <option value="LOW_MARKS">Low Marks</option>
+              <option value="FAIL_MARKS">Failing Marks</option>
+              <option value="DECLINING">Declining Performance</option>
+            </select>
+            <div class="form-error" data-error="fu-alert-type"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="fu-note">Notes / Action Taken</label>
+            <textarea id="fu-note" class="form-textarea"
+              placeholder="e.g. Spoke to student on 20 Oct. Will monitor next week."></textarea>
+          </div>
+          <div class="modal-footer" style="padding:0;margin-top:.5rem;border:none">
+            <button type="button" class="btn btn-outline modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Follow-up</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Detail Tabs Script ── -->
+  <script>
+    function switchDetailTab(tab, btn) {
+      ['attendance', 'marks', 'chart', 'alerts'].forEach(t => {
+        document.getElementById(`detail-tab-${t}`).style.display = t === tab ? 'block' : 'none';
+      });
+      document.querySelectorAll('#modal-student-detail .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+
+  <!-- Main App Script -->
+  <script src="app.js"></script>
+</body>
+
+</html>
