@@ -42,6 +42,7 @@ let allMarks = [];
 let allAttendance = [];
 let followups = [];
 let editingStudentId = null;
+window._currentDetailSid = null;  // tracks open student detail (used by tracker tab)
 
 // ============================================================
 // 4. UTILITY HELPERS
@@ -192,11 +193,12 @@ function navigate(page) {
 }
 
 const pageTitles = {
-  'page-dashboard': 'Dashboard',
-  'page-students': 'Students',
-  'page-attendance': 'Attendance',
+  'page-dashboard':   'Dashboard',
+  'page-students':    'Students',
+  'page-attendance':  'Attendance',
   'page-assessments': 'Assessments',
-  'page-followups': 'Follow-ups',
+  'page-followups':   'Follow-ups',
+  'page-risk':        'Risk Radar',
 };
 
 document.querySelectorAll('.nav-item').forEach(btn => {
@@ -354,6 +356,301 @@ function getAllAlerts() {
 }
 
 // ============================================================
+// 8b. RISK PREDICTION ENGINE
+// ============================================================
+
+/**
+ * Computes a High / Medium / Low risk level for a student.
+ * Reuses computeStudentStats + generateAlerts — no extra DB queries.
+ */
+function computeRiskLevel(sid) {
+  const stats  = computeStudentStats(sid);
+  const alerts = generateAlerts(sid, stats);
+  const hasData = stats.total > 0 || stats.avgPct !== null;
+
+  let riskScore = 0;
+  const reasons = [];
+
+  // ── Attendance component ─────────────────────────────────
+  if (stats.total > 0) {
+    if (stats.attPct < 60) {
+      riskScore += 3;
+      reasons.push(`Critical attendance: ${stats.attPct}% (threshold is 60%)`);
+    } else if (stats.attPct < 75) {
+      riskScore += 2;
+      reasons.push(`Low attendance: ${stats.attPct}% (minimum required: 75%)`);
+    } else if (stats.attPct < 85) {
+      riskScore += 1;
+      reasons.push(`Attendance could improve: ${stats.attPct}%`);
+    }
+  }
+
+  // ── Marks component ─────────────────────────────────────
+  if (stats.avgPct !== null) {
+    if (stats.avgPct < 33) {
+      riskScore += 3;
+      reasons.push(`Failing marks: average ${stats.avgPct}% (pass mark is 33%)`);
+    } else if (stats.avgPct < 40) {
+      riskScore += 2;
+      reasons.push(`Low marks: average ${stats.avgPct}% (below 40% threshold)`);
+    } else if (stats.avgPct < 60) {
+      riskScore += 1;
+      reasons.push(`Below average marks: ${stats.avgPct}%`);
+    }
+  }
+
+  // ── Declining trend component ────────────────────────────
+  if (stats.declining) {
+    riskScore += 2;
+    reasons.push('Declining performance: recent scores dropped more than 10 percentage points');
+  }
+
+  // ── Classify ─────────────────────────────────────────────
+  let level, colorKey;
+  if (!hasData)         { level = 'Unknown'; colorKey = 'unknown'; }
+  else if (riskScore >= 4) { level = 'High';    colorKey = 'high';    }
+  else if (riskScore >= 2) { level = 'Medium';  colorKey = 'medium';  }
+  else                  { level = 'Low';     colorKey = 'low';     }
+
+  return { level, colorKey, riskScore, reasons, stats, alerts };
+}
+
+/**
+ * Generates prioritised, actionable support recommendations from alert list.
+ * Connects each recommendation to an existing follow-up type for one-click logging.
+ */
+function generateRecommendations(alerts, stats) {
+  const recs = [];
+
+  alerts.forEach(alert => {
+    switch (alert.type) {
+
+      case 'VERY_LOW_ATTENDANCE':
+        recs.push({
+          priority: 'urgent', icon: '🚨',
+          action:   'Immediate parent / guardian contact',
+          detail:   `Attendance is critically low at ${stats.attPct}%. Contact the family and schedule an urgent meeting today.`,
+          followupType: 'VERY_LOW_ATTENDANCE',
+        });
+        recs.push({
+          priority: 'high', icon: '🧑‍💼',
+          action:   'Refer to academic counsellor',
+          detail:   'Underlying personal or social issues may be affecting attendance. Arrange a confidential counselling session.',
+          followupType: 'VERY_LOW_ATTENDANCE',
+        });
+        break;
+
+      case 'LOW_ATTENDANCE':
+        recs.push({
+          priority: 'high', icon: '💬',
+          action:   'One-on-one attendance discussion',
+          detail:   `Attendance is ${stats.attPct}%. Schedule a private check-in to understand barriers and agree on an improvement plan.`,
+          followupType: 'LOW_ATTENDANCE',
+        });
+        recs.push({
+          priority: 'medium', icon: '📋',
+          action:   'Set attendance improvement goal',
+          detail:   'Agree on a weekly attendance target with the student and review progress fortnightly.',
+          followupType: 'LOW_ATTENDANCE',
+        });
+        break;
+
+      case 'FAIL_MARKS':
+        recs.push({
+          priority: 'urgent', icon: '📚',
+          action:   'Arrange immediate remedial sessions',
+          detail:   `Average marks are ${stats.avgPct}% — below the 33% pass threshold. Schedule focused remedial classes on weak topics.`,
+          followupType: 'FAIL_MARKS',
+        });
+        recs.push({
+          priority: 'high', icon: '🏫',
+          action:   'Notify department head',
+          detail:   'Risk of course failure. Escalate to the department if no measurable improvement within two weeks.',
+          followupType: 'FAIL_MARKS',
+        });
+        break;
+
+      case 'LOW_MARKS':
+        recs.push({
+          priority: 'medium', icon: '✏️',
+          action:   'Assign targeted revision exercises',
+          detail:   `Average is ${stats.avgPct}%. Share practice problems, concept worksheets, and encourage peer study groups.`,
+          followupType: 'LOW_MARKS',
+        });
+        recs.push({
+          priority: 'medium', icon: '🔍',
+          action:   'Identify concept gaps',
+          detail:   'Review recent assessment answer scripts to pinpoint specific topics that need extra attention.',
+          followupType: 'LOW_MARKS',
+        });
+        break;
+
+      case 'DECLINING':
+        recs.push({
+          priority: 'medium', icon: '📉',
+          action:   'Review study strategies with student',
+          detail:   'Performance is declining. Discuss time management, revision techniques, and schedule support.',
+          followupType: 'DECLINING',
+        });
+        recs.push({
+          priority: 'medium', icon: '📊',
+          action:   'Analyse topic-level score drops',
+          detail:   'Compare recent vs. earlier assessments to identify which topics caused the decline and arrange targeted review.',
+          followupType: 'DECLINING',
+        });
+        break;
+    }
+  });
+
+  // Deduplicate by action text
+  const seen = new Set();
+  return recs.filter(r => { if (seen.has(r.action)) return false; seen.add(r.action); return true; });
+}
+
+// ============================================================
+// 8c. RISK RADAR PAGE
+// ============================================================
+function renderRiskPage() {
+  const container = $('risk-page-content');
+  if (!container) return;
+
+  if (!students.length) {
+    container.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      <h3>No students yet</h3>
+      <p>Add students and record attendance or marks to see risk predictions.</p>
+    </div>`;
+    return;
+  }
+
+  const riskData = students
+    .map(s => ({ student: s, ...computeRiskLevel(s.id) }))
+    .sort((a, b) => b.riskScore - a.riskScore);
+
+  const high    = riskData.filter(r => r.level === 'High');
+  const medium  = riskData.filter(r => r.level === 'Medium');
+  const low     = riskData.filter(r => r.level === 'Low');
+  const unknown = riskData.filter(r => r.level === 'Unknown');
+
+  // ── Summary stat row ───────────────────────────────────────
+  const summaryHtml = `
+    <div class="risk-summary-grid">
+      <div class="risk-summary-card high">
+        <div class="risk-summary-count">${high.length}</div>
+        <div class="risk-summary-label">🔴 High Risk</div>
+      </div>
+      <div class="risk-summary-card medium">
+        <div class="risk-summary-count">${medium.length}</div>
+        <div class="risk-summary-label">🟡 Medium Risk</div>
+      </div>
+      <div class="risk-summary-card low">
+        <div class="risk-summary-count">${low.length}</div>
+        <div class="risk-summary-label">🟢 Low Risk</div>
+      </div>
+      <div class="risk-summary-card unknown">
+        <div class="risk-summary-count">${unknown.length}</div>
+        <div class="risk-summary-label">⚪ No Data</div>
+      </div>
+    </div>`;
+
+  container.innerHTML =
+    summaryHtml +
+    renderRiskGroup('🔴 High Risk Students',          high,    'high')    +
+    renderRiskGroup('🟡 Medium Risk Students',        medium,  'medium')  +
+    renderRiskGroup('🟢 Low Risk Students',           low,     'low')     +
+    (unknown.length ? renderRiskGroup('⚪ Insufficient Data', unknown, 'unknown') : '');
+}
+
+function renderRiskGroup(title, items, colorKey) {
+  if (!items.length) return '';
+  const badgeClass = colorKey === 'high' ? 'badge-red' : colorKey === 'medium' ? 'badge-yellow' : colorKey === 'low' ? 'badge-green' : 'badge-gray';
+  return `
+    <div class="card" style="margin-bottom:.75rem">
+      <div class="card-header">
+        <h3>${title}</h3>
+        <span class="badge ${badgeClass}">${items.length}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.75rem">
+        ${items.map(r => renderRiskCard(r)).join('')}
+      </div>
+    </div>`;
+}
+
+function renderRiskCard(r) {
+  const s    = r.student;
+  const stats = r.stats;
+  const recs  = generateRecommendations(r.alerts, stats);
+
+  const attStr   = stats.total    > 0   ? `${stats.attPct}%`  : '—';
+  const marksStr = stats.avgPct !== null ? `${stats.avgPct}%` : '—';
+
+  const attColor   = stats.total > 0
+    ? (stats.attPct >= 75 ? 'text-success' : stats.attPct >= 60 ? 'text-warning' : 'text-danger') : '';
+  const marksColor = stats.avgPct !== null
+    ? (stats.avgPct >= 60 ? 'text-success' : stats.avgPct >= 40 ? 'text-warning' : 'text-danger') : '';
+  const trendText  = stats.scoredAssessments.length >= 3
+    ? (stats.declining ? '↓ Declining' : '↑ Stable') : '—';
+  const trendColor = stats.declining ? 'text-danger' : (stats.scoredAssessments.length >= 3 ? 'text-success' : '');
+
+  const reasonsHtml = r.reasons.length ? `
+    <div class="risk-reasons">
+      <div class="risk-reasons-title">⚠️ Risk Factors:</div>
+      ${r.reasons.map(reason => `<div class="risk-reason-item">• ${reason}</div>`).join('')}
+    </div>` : '';
+
+  const recsHtml = recs.length ? `
+    <div class="risk-recs">
+      <div class="risk-recs-title">💡 Recommended Actions:</div>
+      ${recs.slice(0, 3).map(rec => `
+        <div class="risk-rec-item">
+          <div class="risk-rec-content">
+            <span>${rec.icon} <strong>${rec.action}</strong></span>
+            <span class="risk-rec-detail">${rec.detail}</span>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="addFollowupFromAlert('${s.id}','${rec.followupType}')">
+            Log Follow-up
+          </button>
+        </div>`).join('')}
+    </div>` : '';
+
+  return `
+    <div class="risk-card ${r.colorKey}">
+      <div class="risk-card-header">
+        <div>
+          <div class="risk-card-name">${escHtml(s.name)}</div>
+          <div class="risk-card-meta">${escHtml(s.roll_number)} · ${escHtml(s.course)} · Sem ${s.semester}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+          <span class="risk-badge risk-${r.colorKey}">${r.level} Risk</span>
+          <button class="btn btn-sm btn-outline" onclick="openStudentDetail('${s.id}')">View Detail</button>
+        </div>
+      </div>
+
+      <div class="risk-stats-row">
+        <div class="risk-stat">
+          <span class="risk-stat-label">Attendance</span>
+          <span class="risk-stat-value ${attColor}">${attStr}</span>
+        </div>
+        <div class="risk-stat">
+          <span class="risk-stat-label">Avg Marks</span>
+          <span class="risk-stat-value ${marksColor}">${marksStr}</span>
+        </div>
+        <div class="risk-stat">
+          <span class="risk-stat-label">Trend</span>
+          <span class="risk-stat-value ${trendColor}">${trendText}</span>
+        </div>
+        <div class="risk-stat">
+          <span class="risk-stat-label">Assessments</span>
+          <span class="risk-stat-value">${stats.scoredAssessments.length}</span>
+        </div>
+      </div>
+
+      ${reasonsHtml}
+      ${recsHtml}
+    </div>`;
+}
+
+// ============================================================
 // 9. DASHBOARD
 // ============================================================
 async function loadDashboard() {
@@ -434,11 +731,12 @@ function renderDashboardChart() {
 // 10. STUDENTS PAGE
 // ============================================================
 const pageLoaders = {
-  'page-dashboard': () => renderDashboard(),
-  'page-students': () => renderStudentsPage(),
-  'page-attendance': () => renderAttendancePage(),
+  'page-dashboard':   () => renderDashboard(),
+  'page-students':    () => renderStudentsPage(),
+  'page-attendance':  () => renderAttendancePage(),
   'page-assessments': () => renderAssessmentsPage(),
-  'page-followups': () => renderFollowupsPage(),
+  'page-followups':   () => renderFollowupsPage(),
+  'page-risk':        () => renderRiskPage(),
 };
 
 function renderStudentsPage() {
@@ -588,8 +886,11 @@ async function deleteStudent(id, name) {
 function openStudentDetail(sid) {
   const s = students.find(x => x.id === sid);
   if (!s) return;
-  const stats = computeStudentStats(sid);
+  const stats  = computeStudentStats(sid);
   const alerts = generateAlerts(sid, stats);
+
+  // Track current sid for lazy tracker chart rendering
+  window._currentDetailSid = sid;
 
   $('detail-student-name').textContent = s.name;
 
@@ -651,6 +952,9 @@ function openStudentDetail(sid) {
       </div>`).join('');
   }
 
+  // Improvement Tracker (populate DOM; chart rendered lazily on tab click)
+  renderImprovementTracker(sid, stats);
+
   openModal('modal-student-detail');
 }
 
@@ -672,6 +976,195 @@ function renderDetailChart(sid, stats) {
         pointRadius: 4,
         fill: true,
         tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ============================================================
+// 10b. IMPROVEMENT TRACKER
+// ============================================================
+
+/**
+ * Renders the Improvement Tracker tab content for a student.
+ * Compares earlier vs. recent attendance & assessment scores.
+ * The Chart.js canvas is rendered lazily via renderTrackerChart().
+ */
+function renderImprovementTracker(sid, stats) {
+  const container = $('detail-tracker');
+  if (!container) return;
+
+  // ── Attendance Trend ────────────────────────────────────────
+  const att = allAttendance
+    .filter(a => a.student_id === sid)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  let attHtml = '';
+  if (att.length >= 6) {
+    const half       = Math.floor(att.length / 2);
+    const earlyAtt   = att.slice(0, half);
+    const recentAtt  = att.slice(-half);
+    const earlyPct   = Math.round(earlyAtt.filter(a  => a.status === 'present' || a.status === 'late').length / earlyAtt.length  * 100);
+    const recentPct  = Math.round(recentAtt.filter(a => a.status === 'present' || a.status === 'late').length / recentAtt.length * 100);
+    const attDelta   = recentPct - earlyPct;
+    const deltaClass = attDelta > 0 ? 'imp-up' : attDelta < 0 ? 'imp-down' : 'imp-neutral';
+    const deltaIcon  = attDelta > 0 ? '↑' : attDelta < 0 ? '↓' : '→';
+    const deltaLabel = `${deltaIcon} ${Math.abs(attDelta)}%`;
+
+    attHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">📅 Attendance Trend</h4>
+        <div class="tracker-compare">
+          <div class="tracker-compare-item">
+            <div class="tracker-compare-label">Earlier Period</div>
+            <div class="tracker-compare-value">${earlyPct}%</div>
+            <div class="tracker-compare-sub">${earlyAtt.length} classes</div>
+          </div>
+          <span class="tracker-delta ${deltaClass}">${deltaLabel}</span>
+          <div class="tracker-compare-item">
+            <div class="tracker-compare-label">Recent Period</div>
+            <div class="tracker-compare-value">${recentPct}%</div>
+            <div class="tracker-compare-sub">${recentAtt.length} classes</div>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    const msg = att.length === 0
+      ? 'No attendance records found.'
+      : `Need at least 6 attendance records for trend comparison (currently ${att.length}).`;
+    attHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">📅 Attendance Trend</h4>
+        <p class="tracker-empty">${msg}</p>
+      </div>`;
+  }
+
+  // ── Assessment Progress ─────────────────────────────────────
+  const sorted = [...stats.scoredAssessments].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let assessHtml = '';
+
+  if (sorted.length === 0) {
+    assessHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">📝 Assessment Progress</h4>
+        <p class="tracker-empty">No assessment marks recorded yet.</p>
+      </div>`;
+  } else if (sorted.length === 1) {
+    assessHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">📝 Assessment Progress</h4>
+        <p class="tracker-empty">Only 1 assessment recorded — add more to track progress over time.</p>
+        <div class="tracker-assess-row" style="margin-top:.6rem">
+          <div>
+            <div style="font-weight:500;font-size:.85rem">${escHtml(sorted[0].name)}</div>
+            <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(sorted[0].date)}</div>
+          </div>
+          <span class="badge ${marksBadge(sorted[0].score, sorted[0].max)}">${sorted[0].pct}%</span>
+        </div>
+      </div>`;
+  } else {
+    const deltas = sorted.map((a, i) => ({
+      ...a,
+      delta: i === 0 ? null : a.pct - sorted[i - 1].pct,
+    }));
+
+    const rows = deltas.map(a => {
+      const deltaHtml = a.delta === null
+        ? '<span class="imp-neutral" style="font-size:.75rem">baseline</span>'
+        : a.delta > 0
+          ? `<span class="imp-up">↑ +${a.delta}%</span>`
+          : a.delta < 0
+            ? `<span class="imp-down">↓ ${a.delta}%</span>`
+            : '<span class="imp-neutral">→ 0%</span>';
+      return `
+        <div class="tracker-assess-row">
+          <div>
+            <div style="font-weight:500;font-size:.85rem">${escHtml(a.name)}</div>
+            <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(a.date)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:.6rem">
+            <span class="badge ${marksBadge(a.score, a.max)}">${a.pct}%</span>
+            ${deltaHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    assessHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">📝 Assessment Progress</h4>
+        <div class="tracker-assess-table">${rows}</div>
+      </div>
+      <div class="tracker-section">
+        <h4 class="tracker-title">📈 Score Timeline</h4>
+        <div class="chart-container" style="height:200px">
+          <canvas id="tracker-chart"></canvas>
+        </div>
+      </div>`;
+  }
+
+  // ── Personalized Recommendations in Tracker ─────────────────
+  const alerts = generateAlerts(sid, stats);
+  const recs   = generateRecommendations(alerts, stats);
+  let recsHtml = '';
+  if (recs.length) {
+    recsHtml = `
+      <div class="tracker-section">
+        <h4 class="tracker-title">💡 Personalized Support Actions</h4>
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          ${recs.map(rec => `
+            <div class="risk-rec-item">
+              <div class="risk-rec-content">
+                <span>${rec.icon} <strong>${rec.action}</strong></span>
+                <span class="risk-rec-detail">${rec.detail}</span>
+              </div>
+              <button class="btn btn-sm btn-outline"
+                onclick="addFollowupFromAlert('${sid}','${rec.followupType}')">
+                Log Follow-up
+              </button>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = `<div style="padding:.25rem 0">${attHtml}${assessHtml}${recsHtml}</div>`;
+}
+
+/**
+ * Renders (or re-renders) the Chart.js score timeline inside the Tracker tab.
+ * Called lazily when the tab becomes visible to avoid 0-dimension canvas issues.
+ */
+function renderTrackerChart(sid) {
+  const canvas = $('tracker-chart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const stats  = computeStudentStats(sid);
+  const sorted = [...stats.scoredAssessments].sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (sorted.length < 2) return;
+
+  if (window._trackerChart) window._trackerChart.destroy();
+  window._trackerChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: sorted.map(a => a.name),
+      datasets: [{
+        label: 'Score %',
+        data:  sorted.map(a => a.pct),
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37,99,235,.1)',
+        borderWidth: 2.5,
+        pointRadius: 5,
+        pointBackgroundColor: sorted.map(a =>
+          a.pct >= 60 ? '#16a34a' : a.pct >= 40 ? '#d97706' : '#dc2626'
+        ),
+        fill: true,
+        tension: 0.35,
       }]
     },
     options: {
@@ -743,7 +1236,7 @@ async function markAttendance(studentId, date, status, btn) {
 
 // Attendance history
 $('btn-att-history').addEventListener('click', async () => {
-  const sid = $('att-history-student').value;
+  const sid = $('att-history-student').value;  // hidden input set by SearchableSelect
   if (!sid) { showToast('Select a student first.', 'warning'); return; }
   const recs = allAttendance.filter(a => a.student_id === sid)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -914,7 +1407,7 @@ function renderFollowupTable(filter = 'all') {
   if (filter !== 'all') list = list.filter(f => f.status === filter);
 
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="5">
+    tbody.innerHTML = `<tr><td colspan="6">
       <div class="empty-state" style="padding:1.5rem">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
         <h3>No follow-ups</h3><p>Follow-ups you log from alerts appear here.</p>
@@ -925,9 +1418,9 @@ function renderFollowupTable(filter = 'all') {
   tbody.innerHTML = list.map(f => {
     const s = students.find(x => x.id === f.student_id);
     const statusBadge = {
-      pending: '<span class="badge badge-yellow">Pending</span>',
+      pending:     '<span class="badge badge-yellow">Pending</span>',
       in_progress: '<span class="badge badge-blue">In Progress</span>',
-      resolved: '<span class="badge badge-green">Resolved</span>',
+      resolved:    '<span class="badge badge-green">Resolved</span>',
     }[f.status] || '';
     return `<tr>
       <td>${s ? escHtml(s.name) : '—'}</td>
@@ -937,10 +1430,18 @@ function renderFollowupTable(filter = 'all') {
       <td>
         <select class="form-select" style="padding:.25rem .5rem;font-size:.8rem;width:130px"
           onchange="updateFollowupStatus('${f.id}', this.value)">
-          <option value="pending"     ${f.status === 'pending' ? 'selected' : ''}>Pending</option>
+          <option value="pending"     ${f.status === 'pending'     ? 'selected' : ''}>Pending</option>
           <option value="in_progress" ${f.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-          <option value="resolved"    ${f.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+          <option value="resolved"    ${f.status === 'resolved'    ? 'selected' : ''}>Resolved</option>
         </select>
+      </td>
+      <td style="text-align:center">
+        <button class="btn-icon danger" title="Delete follow-up"
+          onclick="deleteFollowup('${f.id}', ${s ? `'${escHtml(s.name)}'` : "'this follow-up'"})">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+          </svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -962,8 +1463,35 @@ async function updateFollowupStatus(id, status) {
   showToast('Follow-up status updated.');
 }
 
+async function deleteFollowup(id, studentName) {
+  const label = studentName || 'this follow-up';
+  if (!confirm(`Delete the follow-up log for ${label}?\n\nThis cannot be undone.`)) return;
+
+  const { error } = await db
+    .from('followups')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    showToast(`Could not delete: ${error.message}`, 'error');
+    return;
+  }
+
+  // Remove from local cache without waiting for a full re-fetch
+  followups = followups.filter(f => f.id !== id);
+  renderFollowupTable($('.followup-filter-btn.active')?.dataset.filter || 'all');
+  showToast('Follow-up deleted.', 'success');
+}
+
 function addFollowupFromAlert(sid, alertType) {
-  $('fu-student').value = sid;
+  // Ensure students are loaded in the searchable select before setting the value
+  populateStudentSelects();
+  // Set the student via SearchableSelect instance so text + hidden input both update
+  if (window._ssFollowupStudent) {
+    window._ssFollowupStudent.setValue(sid);
+  } else {
+    $('fu-student').value = sid;  // fallback (should not happen after init)
+  }
   $('fu-alert-type').value = alertType;
   $('fu-note').value = '';
   clearErrors('form-followup');
@@ -971,20 +1499,22 @@ function addFollowupFromAlert(sid, alertType) {
 }
 
 $('btn-add-followup').addEventListener('click', () => {
-  $('form-followup').reset();
   clearErrors('form-followup');
-  populateStudentSelects();
+  populateStudentSelects();   // ensure fresh list
+  if (window._ssFollowupStudent) window._ssFollowupStudent.reset();
+  $('fu-alert-type').value = '';
+  $('fu-note').value = '';
   openModal('modal-followup');
 });
 
 $('form-followup').addEventListener('submit', async e => {
   e.preventDefault();
   clearErrors('form-followup');
-  const sid = $('fu-student').value;
+  const sid   = $('fu-student').value;          // hidden input — set by SearchableSelect
   const atype = $('fu-alert-type').value;
-  const note = $('fu-note').value.trim();
+  const note  = $('fu-note').value.trim();
   let ok = true;
-  if (!sid) { fieldError('fu-student', 'Select a student.'); ok = false; }
+  if (!sid)   { fieldError('fu-student', 'Select a student.');    ok = false; }
   if (!atype) { fieldError('fu-alert-type', 'Select an alert type.'); ok = false; }
   if (!ok) return;
 
@@ -1016,7 +1546,15 @@ function validateEmail(email) {
 
 function fieldError(id, msg) {
   const el = $(id);
-  if (el) el.classList.add('error');
+  if (el) {
+    el.classList.add('error');
+    // If the hidden input lives inside a .ss-wrapper, highlight the visible field border
+    const ssWrapper = el.closest?.('.ss-wrapper');
+    if (ssWrapper) {
+      ssWrapper.querySelector('.ss-input')?.classList.add('error');
+      ssWrapper.querySelector('.ss-field')?.classList.add('error');
+    }
+  }
   const err = document.querySelector(`[data-error="${id}"]`);
   if (err) err.textContent = msg;
 }
@@ -1024,18 +1562,203 @@ function fieldError(id, msg) {
 function clearErrors(formId) {
   const form = $(formId);
   if (!form) return;
-  form.querySelectorAll('.form-input, .form-select, .form-textarea').forEach(el => el.classList.remove('error'));
+  form.querySelectorAll('.form-input, .form-select, .form-textarea, .ss-input, .ss-field').forEach(el => el.classList.remove('error'));
   form.querySelectorAll('.form-error').forEach(el => el.textContent = '');
 }
 
+// ============================================================
+// 14b. SEARCHABLE SELECT WIDGET
+// ============================================================
+/**
+ * Lightweight searchable dropdown — no external libraries.
+ * Wraps a .ss-wrapper containing:
+ *   .ss-input   (visible text / search box)
+ *   hidden input with real value (id = valueInputId)
+ *   .ss-dropdown (option list)
+ *   .ss-clear button
+ */
+class SearchableSelect {
+  constructor(wrapperId, valueInputId, { placeholder = 'Search…', emptyText = 'No results found' } = {}) {
+    this._wrapper    = $(wrapperId);
+    this._textInput  = this._wrapper.querySelector('.ss-input');
+    this._valueInput = $(valueInputId);
+    this._dropdown   = this._wrapper.querySelector('.ss-dropdown');
+    this._clearBtn   = this._wrapper.querySelector('.ss-clear');
+    this._items      = [];       // [{value, label, searchText}]
+    this._selValue   = '';
+    this._selLabel   = '';
+    this._emptyText  = emptyText;
+    this._open       = false;
+    this._bind();
+  }
+
+  // ── Public API ──────────────────────────────────────────────
+
+  /** Load / reload the option list. */
+  setItems(items) {
+    this._items = items;
+    if (this._open) this._renderList(this._filter());
+  }
+
+  /** Programmatically select by value (e.g. from addFollowupFromAlert). */
+  setValue(value) {
+    const item = this._items.find(i => i.value === value);
+    if (item) {
+      this._selValue = item.value;
+      this._selLabel = item.label;
+      this._textInput.value  = item.label;
+      this._valueInput.value = item.value;
+      this._clearBtn.style.display = 'flex';
+    } else {
+      this.reset();
+    }
+  }
+
+  /** Get the current selected value (UUID / string). */
+  getValue() { return this._valueInput.value; }
+
+  /** Clear selection and text. */
+  reset() {
+    this._selValue = '';
+    this._selLabel = '';
+    this._textInput.value  = '';
+    this._valueInput.value = '';
+    this._clearBtn.style.display = 'none';
+    this._closeList();
+  }
+
+  // ── Private ──────────────────────────────────────────────────
+
+  _bind() {
+    // Open / filter on focus or keypress
+    this._textInput.addEventListener('focus', () => {
+      this._textInput.select();
+      this._openList();
+    });
+    this._textInput.addEventListener('input', () => {
+      this._selValue = '';          // typing clears prior selection
+      this._valueInput.value = '';
+      this._clearBtn.style.display = this._textInput.value ? 'flex' : 'none';
+      this._openList();
+    });
+    // Keyboard navigation
+    this._textInput.addEventListener('keydown', e => {
+      if (e.key === 'Escape')     { this._cancelEdit(); e.preventDefault(); }
+      if (e.key === 'ArrowDown')  { this._focusOption(0); e.preventDefault(); }
+      if (e.key === 'Enter')      { e.preventDefault(); }  // prevent form submit while dropdown open
+    });
+    this._dropdown.addEventListener('keydown', e => {
+      const opts = [...this._dropdown.querySelectorAll('.ss-option')];
+      const idx  = opts.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown')  { opts[idx + 1]?.focus(); e.preventDefault(); }
+      if (e.key === 'ArrowUp')    { idx > 0 ? opts[idx - 1].focus() : this._textInput.focus(); e.preventDefault(); }
+      if (e.key === 'Escape')     { this._cancelEdit(); this._textInput.focus(); }
+      if (e.key === 'Enter')      { document.activeElement.click(); e.preventDefault(); }
+    });
+    // Clear button
+    this._clearBtn.addEventListener('click', () => this.reset());
+    this._clearBtn.style.display = 'none';
+    // Click outside to close
+    document.addEventListener('click', e => {
+      if (!this._wrapper.contains(e.target)) this._cancelEdit();
+    });
+  }
+
+  _filter() {
+    const q = this._textInput.value.trim().toLowerCase();
+    return q ? this._items.filter(i => i.searchText.toLowerCase().includes(q)) : this._items;
+  }
+
+  _openList() {
+    this._open = true;
+    const filtered = this._filter();
+    this._renderList(filtered);
+    this._dropdown.style.display = 'block';
+  }
+
+  _closeList() {
+    this._open = false;
+    this._dropdown.style.display = 'none';
+  }
+
+  _cancelEdit() {
+    // If nothing selected yet, clear the partial text
+    if (!this._selValue) {
+      this._textInput.value = '';
+      this._clearBtn.style.display = 'none';
+    } else {
+      // Restore the selected label
+      this._textInput.value = this._selLabel;
+    }
+    this._closeList();
+  }
+
+  _renderList(items) {
+    if (!items.length) {
+      this._dropdown.innerHTML = `<div class="ss-empty">${this._emptyText}</div>`;
+      return;
+    }
+    const q = this._textInput.value.trim().toLowerCase();
+    this._dropdown.innerHTML = items.map(i => {
+      const hl = q ? i.label.replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>') : escHtml(i.label);
+      return `<div class="ss-option${this._selValue === i.value ? ' selected' : ''}" tabindex="0" data-value="${i.value}">${hl}</div>`;
+    }).join('');
+    this._dropdown.querySelectorAll('.ss-option').forEach(el => {
+      el.addEventListener('click', () => this._select(el.dataset.value));
+      el.addEventListener('mousedown', e => e.preventDefault()); // prevent blur before click
+    });
+  }
+
+  _select(value) {
+    const item = this._items.find(i => i.value === value);
+    if (!item) return;
+    this._selValue = item.value;
+    this._selLabel = item.label;
+    this._textInput.value  = item.label;
+    this._valueInput.value = item.value;
+    this._clearBtn.style.display = 'flex';
+    this._closeList();
+    // Fire change event on the hidden input so any listener picks it up
+    this._valueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  _focusOption(idx) {
+    const opts = this._dropdown.querySelectorAll('.ss-option');
+    if (opts[idx]) opts[idx].focus();
+  }
+}
+
+// ── Searchable select instances (global so addFollowupFromAlert can reach them) ──
+window._ssAttHistory     = null;
+window._ssFollowupStudent = null;
+
+/**
+ * Initialise both SearchableSelect widgets.
+ * Called once from DOMContentLoaded.
+ */
+function initSearchableSelects() {
+  window._ssAttHistory = new SearchableSelect(
+    'ss-att-history', 'att-history-student',
+    { placeholder: 'Search student…' }
+  );
+  window._ssFollowupStudent = new SearchableSelect(
+    'ss-fu-student', 'fu-student',
+    { placeholder: 'Search by name or roll number…' }
+  );
+}
+
+/**
+ * Build the student item list and push it to every SearchableSelect instance.
+ * Also preserves the currently-selected value when refreshing.
+ */
 function populateStudentSelects() {
-  ['att-history-student', 'fu-student'].forEach(selId => {
-    const sel = $(selId);
-    if (!sel) return;
-    const current = sel.value;
-    sel.innerHTML = `<option value="">Select student…</option>` +
-      students.map(s => `<option value="${s.id}" ${s.id === current ? 'selected' : ''}>${escHtml(s.name)} (${escHtml(s.roll_number)})</option>`).join('');
-  });
+  const items = students.map(s => ({
+    value:      s.id,
+    label:      `${s.name} (${s.roll_number})`,
+    searchText: `${s.name} ${s.roll_number} ${s.course}`,
+  }));
+  if (window._ssAttHistory)      window._ssAttHistory.setItems(items);
+  if (window._ssFollowupStudent) window._ssFollowupStudent.setItems(items);
 }
 
 // Close modals on overlay click
@@ -1058,10 +1781,29 @@ function checkConfig() {
 }
 
 // ============================================================
-// 16. BOOT
+// 16. RISK RADAR — REFRESH BUTTON
+// ============================================================
+// Wired after DOMContentLoaded so the element exists.
+window.addEventListener('DOMContentLoaded', () => {
+  const btnRefresh = $('btn-refresh-risk');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async () => {
+      btnRefresh.disabled = true;
+      btnRefresh.textContent = 'Refreshing…';
+      await loadAllData();
+      renderRiskPage();
+      btnRefresh.disabled = false;
+      btnRefresh.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.96 7.96 0 0012 4c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Refresh`;
+    });
+  }
+});
+
+// ============================================================
+// 17. BOOT
 // ============================================================
 window.addEventListener('DOMContentLoaded', () => {
   checkConfig();
+  initSearchableSelects();   // build searchable dropdown widgets
   navigate('page-dashboard');
   initAuth();
 });

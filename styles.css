@@ -1172,3 +1172,562 @@ tbody tr:hover {
     padding: 1.75rem 1.25rem;
   }
 }
+
+/* =============================================================
+   SEARCHABLE SELECT WIDGET  (.ss-*)
+   ============================================================= */
+
+.ss-wrapper {
+  position: relative;
+  font-size: .875rem;
+}
+
+/* ── Field row (icon + text input + clear button) ── */
+.ss-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0 .5rem 0 .75rem;
+  gap: .35rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.ss-field:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+
+.ss-field.error {
+  border-color: var(--danger);
+}
+
+.ss-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ss-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: .52rem 0;
+  font-size: .875rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  min-width: 0;
+}
+
+.ss-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* error state: highlight the field border */
+.ss-input.error+* {
+  /* handled by .ss-field.error — apply via JS */
+}
+
+.ss-wrapper .ss-input.error {
+  /* fallback if class lands on input directly */
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+}
+
+/* ── Clear (×) button ── */
+.ss-clear {
+  display: none;
+  /* shown via JS when value is set */
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-radius: 50%;
+  font-size: .8rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+
+.ss-clear:hover {
+  background: var(--border-dark);
+  color: var(--text-primary);
+}
+
+/* ── Dropdown list ── */
+.ss-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 230px;
+  overflow-y: auto;
+  z-index: 300;
+  padding: .3rem 0;
+}
+
+/* ── Option rows ── */
+.ss-option {
+  padding: .5rem .85rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: .84rem;
+  line-height: 1.4;
+  border-radius: 0;
+  outline: none;
+  transition: background .1s;
+}
+
+.ss-option:hover,
+.ss-option:focus {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.ss-option.selected {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Search match highlight */
+.ss-option mark {
+  background: #fde68a;
+  color: #92400e;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── Empty / no results ── */
+.ss-empty {
+  padding: .75rem .85rem;
+  color: var(--text-muted);
+  font-size: .82rem;
+  text-align: center;
+}
+
+/* ── Mobile ── */
+@media (max-width: 600px) {
+  .ss-dropdown {
+    max-height: 180px;
+  }
+}
+
+/* ── Color helpers ──────────────────────────────────────────── */
+.text-success {
+  color: var(--success);
+}
+
+.text-warning {
+  color: var(--warning);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+/* ── Risk Summary Grid ──────────────────────────────────────── */
+.risk-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: .75rem;
+  margin-bottom: 1.25rem;
+}
+
+.risk-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  text-align: center;
+  border-top: 3px solid transparent;
+}
+
+.risk-summary-card.high {
+  border-top-color: var(--danger);
+}
+
+.risk-summary-card.medium {
+  border-top-color: var(--warning);
+}
+
+.risk-summary-card.low {
+  border-top-color: var(--success);
+}
+
+.risk-summary-card.unknown {
+  border-top-color: var(--border-dark);
+}
+
+.risk-summary-count {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.risk-summary-card.high .risk-summary-count {
+  color: var(--danger);
+}
+
+.risk-summary-card.medium .risk-summary-count {
+  color: var(--warning);
+}
+
+.risk-summary-card.low .risk-summary-count {
+  color: var(--success);
+}
+
+.risk-summary-card.unknown .risk-summary-count {
+  color: var(--text-muted);
+}
+
+.risk-summary-label {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: .4rem;
+}
+
+/* ── Risk Student Card ──────────────────────────────────────── */
+.risk-card {
+  border-radius: var(--radius);
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid transparent;
+}
+
+.risk-card.high {
+  border-left-color: var(--danger);
+  background: rgba(254, 226, 226, .2);
+}
+
+.risk-card.medium {
+  border-left-color: var(--warning);
+  background: rgba(254, 243, 199, .2);
+}
+
+.risk-card.low {
+  border-left-color: var(--success);
+  background: rgba(220, 252, 231, .2);
+}
+
+.risk-card.unknown {
+  border-left-color: var(--border-dark);
+  background: var(--surface-2);
+}
+
+.risk-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin-bottom: .75rem;
+}
+
+.risk-card-name {
+  font-weight: 600;
+  font-size: .9rem;
+}
+
+.risk-card-meta {
+  font-size: .75rem;
+  color: var(--text-secondary);
+  margin-top: .15rem;
+}
+
+/* ── Risk Badge ─────────────────────────────────────────────── */
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .22rem .7rem;
+  border-radius: 20px;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.risk-high {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.risk-medium {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.risk-low {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.risk-unknown {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* ── Risk Stats Row ─────────────────────────────────────────── */
+.risk-stats-row {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: .75rem;
+  flex-wrap: wrap;
+}
+
+.risk-stat {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+}
+
+.risk-stat-label {
+  font-size: .68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.risk-stat-value {
+  font-size: .92rem;
+  font-weight: 700;
+}
+
+/* ── Risk Reasons ───────────────────────────────────────────── */
+.risk-reasons {
+  background: rgba(255, 255, 255, .55);
+  border: 1px solid rgba(0, 0, 0, .06);
+  border-radius: var(--radius);
+  padding: .6rem .8rem;
+  margin-bottom: .65rem;
+  font-size: .8rem;
+}
+
+.risk-reasons-title {
+  font-weight: 700;
+  margin-bottom: .3rem;
+  font-size: .78rem;
+}
+
+.risk-reason-item {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ── Risk Recommendations ───────────────────────────────────── */
+.risk-recs {
+  font-size: .8rem;
+}
+
+.risk-recs-title {
+  font-weight: 700;
+  margin-bottom: .4rem;
+  font-size: .78rem;
+}
+
+.risk-rec-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem .7rem;
+  background: rgba(255, 255, 255, .65);
+  border-radius: var(--radius);
+  border: 1px solid rgba(0, 0, 0, .06);
+  margin-bottom: .4rem;
+  flex-wrap: wrap;
+}
+
+.risk-rec-content {
+  display: flex;
+  flex-direction: column;
+  gap: .12rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.risk-rec-detail {
+  font-size: .75rem;
+  color: var(--text-secondary);
+}
+
+/* ── Improvement Tracker ────────────────────────────────────── */
+.tracker-section {
+  margin-bottom: 1.25rem;
+}
+
+.tracker-title {
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: .75rem;
+}
+
+.tracker-empty {
+  font-size: .84rem;
+  color: var(--text-muted);
+}
+
+/* Attendance / summary comparison panel */
+.tracker-compare {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: .75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  flex-wrap: wrap;
+}
+
+.tracker-compare-item {
+  text-align: center;
+  flex: 1;
+  min-width: 80px;
+}
+
+.tracker-compare-label {
+  font-size: .7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: .25rem;
+  font-weight: 600;
+}
+
+.tracker-compare-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tracker-compare-sub {
+  font-size: .7rem;
+  color: var(--text-muted);
+  margin-top: .2rem;
+}
+
+/* Delta chip used in attendance comparison */
+.tracker-delta {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: .4rem .8rem;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Improvement delta chips used inline in assessment rows */
+.imp-up {
+  display: inline-flex;
+  align-items: center;
+  background: var(--success-light);
+  color: var(--success);
+  border-radius: var(--radius);
+  padding: .15rem .55rem;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.imp-down {
+  display: inline-flex;
+  align-items: center;
+  background: var(--danger-light);
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: .15rem .55rem;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.imp-neutral {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  padding: .15rem .55rem;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Tracker-delta also gets colour from imp- classes when combined */
+.tracker-delta.imp-up {
+  background: var(--success-light);
+  color: var(--success);
+  font-size: 1rem;
+}
+
+.tracker-delta.imp-down {
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 1rem;
+}
+
+.tracker-delta.imp-neutral {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+/* Assessment progress table */
+.tracker-assess-table {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+}
+
+.tracker-assess-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .55rem .8rem;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+/* ── Mobile tweaks for new features ─────────────────────────── */
+@media (max-width: 600px) {
+  .risk-stats-row {
+    gap: .75rem;
+  }
+
+  .tracker-compare {
+    flex-direction: column;
+    gap: .5rem;
+    text-align: center;
+  }
+
+  .tracker-delta {
+    align-self: center;
+  }
+
+  .risk-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .risk-rec-item {
+    flex-direction: column;
+  }
+}
