@@ -275,32 +275,65 @@
             </div>
           </div>
 
-          <!-- Chart + Alerts -->
-          <div class="dash-grid">
-            <div class="card" style="min-width:0">
-              <div class="card-header">
-                <h3>Attendance Overview</h3>
-                <span style="font-size:.75rem;color:var(--text-muted)">(Top 12 students)</span>
+          <!-- Full-Width Attendance Trend Line Chart -->
+          <div class="card dash-chart-card full-width" style="margin-bottom:1.4rem">
+            <div class="card-header dash-chart-header">
+              <div class="dash-chart-title-group">
+                <div class="chart-header-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                </div>
+                <div>
+                  <div class="dash-chart-heading-row">
+                    <h3>Attendance Trend</h3>
+                    <span class="live-pulse-badge">
+                      <span class="pulse-dot"></span> Live Trend
+                    </span>
+                  </div>
+                  <p class="dash-chart-subtitle">Class-wide attendance trajectory over time with smooth trend projection</p>
+                </div>
               </div>
-              <div class="chart-container">
-                <canvas id="dash-chart"></canvas>
+
+              <div class="dash-chart-controls">
+                <div class="chart-metric-pill" id="trend-period-stat">
+                  <span class="metric-pill-label">Period Avg:</span>
+                  <span class="metric-pill-value" id="trend-avg-val">—%</span>
+                  <span class="metric-pill-delta" id="trend-delta-val">—</span>
+                </div>
+
+                <div class="filter-btn-group" id="attendance-filter-group" role="group" aria-label="Attendance date filters">
+                  <button type="button" class="filter-btn" data-filter="7d" id="filter-btn-7d">Last 7 Days</button>
+                  <button type="button" class="filter-btn active" data-filter="30d" id="filter-btn-30d">Last 30 Days</button>
+                  <button type="button" class="filter-btn" data-filter="semester" id="filter-btn-semester">This Semester</button>
+                </div>
               </div>
             </div>
 
-            <div class="card" style="min-width:0">
-              <div class="card-header">
+            <div class="chart-container dash-trend-container" style="height:320px;position:relative">
+              <canvas id="dash-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Full-Width Active Alerts (Directly Below Graph) -->
+          <div class="card dash-alerts-card full-width" style="margin-bottom:1.4rem">
+            <div class="card-header dash-alerts-header">
+              <div class="alerts-heading-wrap">
                 <h3>
                   <svg viewBox="0 0 24 24" fill="currentColor"
-                    style="width:16px;height:16px;color:var(--warning);margin-right:.3rem">
+                    style="width:18px;height:18px;color:var(--warning);margin-right:.4rem">
                     <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
                   </svg>
                   Active Alerts
                 </h3>
+                <span class="alerts-count-badge" id="active-alerts-badge">0 Alerts</span>
               </div>
-              <div id="dashboard-alerts" class="alerts-list">
-                <div class="loading-state">
-                  <div class="spinner"></div>Loading…
-                </div>
+              <span class="alerts-subtitle" style="font-size:.82rem;color:var(--text-muted)">Early academic interventions requiring attention</span>
+            </div>
+
+            <div id="dashboard-alerts" class="alerts-list full-width-alerts">
+              <div class="loading-state">
+                <div class="spinner"></div>Loading…
               </div>
             </div>
           </div>

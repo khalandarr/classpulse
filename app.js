@@ -664,45 +664,249 @@ function renderRiskCard(r) {
 // ============================================================
 // 9. DASHBOARD
 // ============================================================
+let currentAttTrendFilter = '30d';
+const _metricPrevValues = {};
+
+function animateMetricCounter(elementId, targetValue, suffix = '', duration = 750) {
+  const el = $(elementId);
+  if (!el) return;
+
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const numTarget = typeof targetValue === 'number' ? targetValue : parseInt(targetValue, 10);
+
+  if (isNaN(numTarget) || prefersReducedMotion) {
+    el.textContent = targetValue !== undefined && targetValue !== null ? `${targetValue}${suffix}` : '—';
+    _metricPrevValues[elementId] = numTarget;
+    return;
+  }
+
+  const startValue = typeof _metricPrevValues[elementId] === 'number' ? _metricPrevValues[elementId] : 0;
+  _metricPrevValues[elementId] = numTarget;
+
+  if (startValue === numTarget) {
+    el.textContent = `${numTarget}${suffix}`;
+    return;
+  }
+
+  const startTime = performance.now();
+
+  function updateCount(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Ease out cubic
+    const easedProgress = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startValue + (numTarget - startValue) * easedProgress);
+
+    el.textContent = `${current}${suffix}`;
+
+    if (progress < 1) {
+      requestAnimationFrame(updateCount);
+    } else {
+      el.textContent = `${numTarget}${suffix}`;
+    }
+  }
+
+  requestAnimationFrame(updateCount);
+}
+
+function initAttendanceTrendFilters() {
+  const container = $('attendance-filter-group');
+  if (!container || container.dataset.initialized) return;
+  container.dataset.initialized = 'true';
+
+  container.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const filter = btn.dataset.filter;
+      if (!filter || filter === currentAttTrendFilter) return;
+
+      currentAttTrendFilter = filter;
+      container.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.filter === filter);
+      });
+
+      renderDashboardChart(true);
+    });
+  });
+}
+
+function getAttendanceTrendData(filterRange = '30d') {
+  if (!allAttendance || !allAttendance.length) {
+    return {
+      labels: [],
+      fullDates: [],
+      values: [],
+      details: [],
+      avgPct: 0,
+      deltaText: '—',
+      deltaClass: 'neutral'
+    };
+  }
+
+  // Aggregate attendance by date
+  const dateMap = new Map();
+  allAttendance.forEach(a => {
+    if (!a.date) return;
+    const dateStr = toIsoDate(a.date);
+    if (!dateStr) return;
+
+    if (!dateMap.has(dateStr)) {
+      dateMap.set(dateStr, {
+        date: dateStr,
+        total: 0,
+        present: 0,
+        late: 0,
+        absent: 0
+      });
+    }
+    const item = dateMap.get(dateStr);
+    item.total++;
+    if (a.status === 'present') item.present++;
+    else if (a.status === 'late') item.late++;
+    else if (a.status === 'absent') item.absent++;
+  });
+
+  // Sort ascending by date
+  let sortedDays = Array.from(dateMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Compute percentage for each recorded day
+  sortedDays.forEach(d => {
+    const attended = d.present + d.late;
+    d.pct = d.total > 0 ? Math.round((attended / d.total) * 100) : 0;
+  });
+
+  // Apply date range filter
+  if (sortedDays.length > 0) {
+    const maxDate = new Date(sortedDays[sortedDays.length - 1].date);
+
+    if (filterRange === '7d') {
+      const cutoff = new Date(maxDate);
+      cutoff.setDate(cutoff.getDate() - 7);
+      const filtered = sortedDays.filter(d => new Date(d.date) >= cutoff);
+      sortedDays = (filtered.length >= 4 || sortedDays.length < 7) ? filtered : sortedDays.slice(-7);
+    } else if (filterRange === '30d') {
+      const cutoff = new Date(maxDate);
+      cutoff.setDate(cutoff.getDate() - 30);
+      const filtered = sortedDays.filter(d => new Date(d.date) >= cutoff);
+      sortedDays = (filtered.length >= 8 || sortedDays.length < 15) ? filtered : sortedDays.slice(-30);
+    }
+    // 'semester' retains all records across the semester
+  }
+
+  // Format labels for readable x-axis (no tilted student names, clean dates)
+  const labels = sortedDays.map(d => {
+    const parts = d.date.split('-');
+    if (parts.length === 3) {
+      const dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    }
+    return d.date;
+  });
+
+  // Full formatted date string for rich tooltip
+  const fullDates = sortedDays.map(d => {
+    const parts = d.date.split('-');
+    if (parts.length === 3) {
+      const dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    }
+    return d.date;
+  });
+
+  const values = sortedDays.map(d => d.pct);
+
+  // Period Average
+  const avgPct = values.length
+    ? Math.round(values.reduce((s, v) => s + v, 0) / values.length)
+    : 0;
+
+  // Period Trend Delta
+  let deltaText = '—';
+  let deltaClass = 'neutral';
+  if (values.length >= 3) {
+    const splitIndex = Math.max(1, Math.floor(values.length / 2));
+    const earlier = values.slice(0, splitIndex);
+    const recent = values.slice(splitIndex);
+    const earlierAvg = earlier.reduce((s, v) => s + v, 0) / earlier.length;
+    const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length;
+    const diff = Math.round(recentAvg - earlierAvg);
+
+    if (diff > 0) {
+      deltaText = `+${diff}% ↑`;
+      deltaClass = 'up';
+    } else if (diff < 0) {
+      deltaText = `${diff}% ↓`;
+      deltaClass = 'down';
+    } else {
+      deltaText = `0% →`;
+      deltaClass = 'neutral';
+    }
+  }
+
+  return {
+    labels,
+    fullDates,
+    values,
+    details: sortedDays,
+    avgPct,
+    deltaText,
+    deltaClass
+  };
+}
+
 async function loadDashboard() {
   await loadAllData();
   renderDashboard();
 }
 
 function renderDashboard() {
+  initAttendanceTrendFilters();
+
   // Stats
   const allAlerts = getAllAlerts();
   const attPcts = students.map(s => computeStudentStats(s.id).attPct);
   const avgAtt = attPcts.length ? Math.round(attPcts.reduce((a, b) => a + b, 0) / attPcts.length) : 0;
   const atRisk = new Set(allAlerts.filter(a => a.severity === 'danger').map(a => a.student.id)).size;
 
-  $('stat-students').textContent = students.length;
-  $('stat-avg-att').textContent = students.length ? `${avgAtt}%` : '—';
-  $('stat-alerts').textContent = allAlerts.length;
-  $('stat-at-risk').textContent = atRisk;
+  // Animated KPI Summary Counters
+  animateMetricCounter('stat-students', students.length);
+  animateMetricCounter('stat-avg-att', students.length ? avgAtt : 0, students.length ? '%' : '');
+  animateMetricCounter('stat-alerts', allAlerts.length);
+  animateMetricCounter('stat-at-risk', atRisk);
 
-  // Alert list (top 10)
-  const container = $('dashboard-alerts');
-  if (!allAlerts.length) {
-    container.innerHTML = `<div class="empty-state">
-      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-      <h3>No alerts</h3><p>All students are doing well.</p></div>`;
-    return;
+  // Active Alerts count badge in full-width header
+  const badge = $('active-alerts-badge');
+  if (badge) {
+    if (allAlerts.length === 0) {
+      badge.textContent = 'All Clear';
+      badge.className = 'alerts-count-badge success';
+    } else {
+      badge.textContent = `${allAlerts.length} Active`;
+      badge.className = `alerts-count-badge ${atRisk > 0 ? 'danger' : ''}`;
+    }
   }
 
-  container.innerHTML = allAlerts.slice(0, 15).map(a => `
-    <div class="alert-item ${a.severity}">
-      <div class="alert-row">
-        <span class="alert-title">${escHtml(a.student.name)}
-          <span style="font-weight:400;color:var(--text-secondary)"> — ${RULES[a.type]?.label || a.type}</span>
-        </span>
-        <button class="btn btn-sm btn-outline" onclick="openStudentDetail('${a.student.id}')">View</button>
-      </div>
-      <div class="alert-rule">📋 Rule: ${a.rule}</div>
-      <div class="alert-suggestion">💡 <strong>Suggested Action:</strong> ${a.suggestion}</div>
-    </div>`).join('');
+  // Alert list (full-width responsive cards)
+  const container = $('dashboard-alerts');
+  if (!allAlerts.length) {
+    container.innerHTML = `<div class="empty-state" style="grid-column:1 / -1;padding:2.5rem 1rem">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      <h3>No alerts</h3><p>All students are doing well.</p></div>`;
+  } else {
+    container.innerHTML = allAlerts.slice(0, 15).map(a => `
+      <div class="alert-item ${a.severity}">
+        <div class="alert-row">
+          <span class="alert-title">${escHtml(a.student.name)}
+            <span style="font-weight:400;color:var(--text-secondary)"> — ${RULES[a.type]?.label || a.type}</span>
+          </span>
+          <button class="btn btn-sm btn-outline" onclick="openStudentDetail('${a.student.id}')">View</button>
+        </div>
+        <div class="alert-rule">📋 Rule: ${a.rule}</div>
+        <div class="alert-suggestion">💡 <strong>Suggested Action:</strong> ${a.suggestion}</div>
+      </div>`).join('');
+  }
 
-  // Render dashboard chart
+  // Render full-width neon-cyan attendance trend line chart
   renderDashboardChart();
 }
 
@@ -711,66 +915,127 @@ function getThemeChartColors() {
     (!document.documentElement.getAttribute('data-theme') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   return {
     isDark,
+    neonCyan: isDark ? '#00f5d4' : '#0891b2',
+    neonGlow: isDark ? 'rgba(0, 245, 212, 0.55)' : 'rgba(8, 145, 178, 0.35)',
     gridColor: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)',
     tickColor: isDark ? '#94a3b8' : '#64748b',
-    tooltipBg: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+    tooltipBg: isDark ? 'rgba(11, 15, 25, 0.96)' : 'rgba(255, 255, 255, 0.98)',
     tooltipTitle: isDark ? '#f8fafc' : '#0f172a',
     tooltipBody: isDark ? '#cbd5e1' : '#334155',
-    tooltipBorder: isDark ? 'rgba(45, 212, 191, 0.35)' : 'rgba(13, 148, 136, 0.35)',
+    tooltipBorder: isDark ? 'rgba(0, 245, 212, 0.45)' : 'rgba(8, 145, 178, 0.35)',
   };
 }
 
-function renderDashboardChart() {
+function renderDashboardChart(isFilterChange = false) {
   const canvas = $('dash-chart');
   if (!canvas || typeof Chart === 'undefined') return;
 
-  const labels = students.slice(0, 12).map(s => s.name.split(' ')[0]);
-  const data = students.slice(0, 12).map(s => computeStudentStats(s.id).attPct);
+  const trendData = getAttendanceTrendData(currentAttTrendFilter);
 
-  if (window._dashChart) window._dashChart.destroy();
+  // Update Period Summary Pill in header
+  const avgValEl = $('trend-avg-val');
+  if (avgValEl) avgValEl.textContent = trendData.values.length ? `${trendData.avgPct}%` : '—';
+
+  const deltaValEl = $('trend-delta-val');
+  if (deltaValEl) {
+    deltaValEl.textContent = trendData.deltaText;
+    deltaValEl.className = `metric-pill-delta ${trendData.deltaClass}`;
+  }
+
+  if (window._dashChart) {
+    window._dashChart.destroy();
+    window._dashChart = null;
+  }
+
+  // If no attendance data yet
+  if (!trendData.values.length) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No attendance recorded yet. Take attendance to see trend line.', canvas.width / 2, canvas.height / 2);
+    return;
+  }
 
   const ctx = canvas.getContext('2d');
   const chartColors = getThemeChartColors();
+  const isDark = chartColors.isDark;
 
-  // Create refined vertical gradients for bars
-  const bgGradients = data.map(v => {
-    const grad = ctx.createLinearGradient(0, 0, 0, 220);
-    if (v >= 75) {
-      grad.addColorStop(0, '#14b8a6');
-      grad.addColorStop(1, '#0d9488');
-    } else if (v >= 60) {
-      grad.addColorStop(0, '#fbbf24');
-      grad.addColorStop(1, '#d97706');
-    } else {
-      grad.addColorStop(0, '#f87171');
-      grad.addColorStop(1, '#dc2626');
+  // Vertical neon-cyan gradient fill (top glow fading to transparent bottom)
+  const fillGrad = ctx.createLinearGradient(0, 0, 0, 300);
+  fillGrad.addColorStop(0, isDark ? 'rgba(0, 245, 212, 0.32)' : 'rgba(8, 145, 178, 0.22)');
+  fillGrad.addColorStop(0.55, isDark ? 'rgba(0, 245, 212, 0.08)' : 'rgba(8, 145, 178, 0.05)');
+  fillGrad.addColorStop(1, 'rgba(0, 245, 212, 0.0)');
+
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Custom Chart.js plugin for glowing neon line and vertical hover guide line
+  const neonTrendPlugin = {
+    id: 'neonTrendPlugin',
+    beforeDatasetsDraw(chart) {
+      const c = chart.ctx;
+      c.save();
+      c.shadowColor = chartColors.neonGlow;
+      c.shadowBlur = isDark ? 16 : 8;
+      c.shadowOffsetY = 2;
+    },
+    afterDatasetsDraw(chart) {
+      chart.ctx.restore();
+    },
+    afterDraw(chart) {
+      if (chart.tooltip && chart.tooltip.getActiveElements && chart.tooltip.getActiveElements().length) {
+        const activePoint = chart.tooltip.getActiveElements()[0];
+        const { ctx: c, chartArea: { top, bottom } } = chart;
+        const x = activePoint.element.x;
+
+        c.save();
+        c.beginPath();
+        c.setLineDash([4, 4]);
+        c.moveTo(x, top);
+        c.lineTo(x, bottom);
+        c.lineWidth = 1.5;
+        c.strokeStyle = isDark ? 'rgba(0, 245, 212, 0.4)' : 'rgba(8, 145, 178, 0.3)';
+        c.stroke();
+        c.restore();
+      }
     }
-    return grad;
-  });
-
-  const borderColors = data.map(v => v >= 75 ? '#2dd4bf' : v >= 60 ? '#f59e0b' : '#ef4444');
+  };
 
   window._dashChart = new Chart(canvas, {
-    type: 'bar',
+    type: 'line',
     data: {
-      labels,
+      labels: trendData.labels,
       datasets: [{
-        label: 'Attendance %',
-        data,
-        backgroundColor: bgGradients,
-        borderColor: borderColors,
-        borderWidth: 1.5,
-        borderRadius: 6,
-        borderSkipped: false,
-        maxBarThickness: 38,
+        label: 'Daily Attendance %',
+        data: trendData.values,
+        borderColor: chartColors.neonCyan,
+        backgroundColor: fillGrad,
+        borderWidth: 3,
+        tension: 0.38,
+        cubicInterpolationMode: 'monotone',
+        fill: true,
+        pointRadius: 4.5,
+        pointHoverRadius: 8,
+        pointBackgroundColor: chartColors.neonCyan,
+        pointBorderColor: isDark ? '#0b0f19' : '#ffffff',
+        pointBorderWidth: 2.5,
+        pointHoverBackgroundColor: '#ffffff',
+        pointHoverBorderColor: chartColors.neonCyan,
+        pointHoverBorderWidth: 3.5,
       }]
     },
+    plugins: [neonTrendPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: {
-        duration: 350,
+      animation: prefersReducedMotion ? false : {
+        duration: isFilterChange ? 650 : 850,
         easing: 'easeOutQuart'
+      },
+      interaction: {
+        mode: 'index',
+        intersect: false
       },
       plugins: {
         legend: { display: false },
@@ -779,13 +1044,29 @@ function renderDashboardChart() {
           titleColor: chartColors.tooltipTitle,
           bodyColor: chartColors.tooltipBody,
           borderColor: chartColors.tooltipBorder,
-          borderWidth: 1,
-          padding: { top: 8, bottom: 8, left: 12, right: 12 },
-          cornerRadius: 8,
-          boxPadding: 4,
+          borderWidth: 1.5,
+          padding: { top: 10, bottom: 10, left: 14, right: 14 },
+          cornerRadius: 10,
+          boxPadding: 6,
           usePointStyle: true,
           callbacks: {
-            label: context => ` Attendance: ${context.parsed.y}%`
+            title: items => {
+              if (!items.length) return '';
+              const idx = items[0].dataIndex;
+              return trendData.fullDates[idx] || items[0].label;
+            },
+            label: context => {
+              const idx = context.dataIndex;
+              const d = trendData.details[idx];
+              const p = context.parsed.y;
+              const statusText = p >= 75 ? 'Healthy (≥75%)' : p >= 60 ? 'Moderate (60-74%)' : 'Critical (<60%)';
+              if (!d) return ` Attendance: ${p}%`;
+              return [
+                ` Attendance Rate: ${p}%`,
+                ` Present: ${d.present + d.late} of ${d.total} students (${d.absent} absent)`,
+                ` Status: ${statusText}`
+              ];
+            }
           }
         }
       },
@@ -794,14 +1075,22 @@ function renderDashboardChart() {
           min: 0,
           max: 100,
           ticks: {
+            stepSize: 20,
             callback: v => v + '%',
             color: chartColors.tickColor,
             font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
           },
-          grid: { color: chartColors.gridColor }
+          grid: {
+            color: chartColors.gridColor,
+            borderDash: [4, 4]
+          }
         },
         x: {
           ticks: {
+            maxRotation: 0,
+            minRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: window.innerWidth < 640 ? 6 : 14,
             color: chartColors.tickColor,
             font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
           },
