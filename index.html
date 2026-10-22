@@ -203,6 +203,14 @@
           </svg>
         </button>
         <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <button class="theme-toggle-btn" id="btn-theme-toggle" title="Toggle theme (Light / Dark)" aria-label="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 00-1.41-1.41l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 00-1.41-1.41l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12.3 2a10 10 0 00-1.9 20 10 10 0 0010.5-8.5A10 10 0 0112.3 2z"/>
+          </svg>
+        </button>
       </header>
 
       <main class="page-content">
@@ -268,7 +276,7 @@
           </div>
 
           <!-- Chart + Alerts -->
-          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:1.25rem;flex-wrap:wrap">
+          <div class="dash-grid">
             <div class="card" style="min-width:0">
               <div class="card-header">
                 <h3>Attendance Overview</h3>
@@ -421,24 +429,170 @@
             </div>
           </div>
 
-          <!-- Attendance History -->
-          <div class="card">
-            <div class="card-header">
-              <h3>Attendance History</h3>
-              <!-- Searchable student picker -->
-              <div class="ss-wrapper" id="ss-att-history" style="width:220px;max-width:260px;flex-shrink:0">
-                <div class="ss-field">
-                  <svg class="ss-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16a6.47 6.47 0 004.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 115 9.5 4.5 4.5 0 019.5 14z"/></svg>
-                  <input type="text" class="ss-input" id="ss-att-history-input"
-                    placeholder="Search student…" autocomplete="off" spellcheck="false">
-                  <button type="button" class="ss-clear" id="ss-att-history-clear" title="Clear">&times;</button>
-                </div>
-                <input type="hidden" id="att-history-student">
-                <div class="ss-dropdown" id="ss-att-history-list"></div>
+          <!-- Attendance History & Calculator -->
+          <div class="card" id="card-attendance-history">
+            <div class="card-header" style="flex-wrap:wrap;gap:.75rem">
+              <div style="flex:1;min-width:200px">
+                <h3 style="display:flex;align-items:center;gap:.5rem">
+                  <span>Attendance History</span>
+                  <span class="badge badge-blue" style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em">Calculator</span>
+                </h3>
+                <p style="font-size:.8rem;color:var(--text-secondary);margin-top:.15rem">
+                  Calculate attendance percentage and view recorded sessions for any student within a custom date range.
+                </p>
               </div>
-              <button id="btn-att-history" class="btn btn-outline btn-sm">View</button>
             </div>
-            <div id="att-history-section" style="display:none">
+
+            <!-- Calculator Filter Toolbar -->
+            <div class="att-calc-toolbar">
+              <!-- Student Picker -->
+              <div class="att-calc-filter-group" style="flex:1.2;min-width:220px">
+                <label class="form-label" style="margin:0;font-size:.78rem;font-weight:600">Select Student <span>*</span></label>
+                <!-- Searchable student picker -->
+                <div class="ss-wrapper" id="ss-att-history" style="width:100%">
+                  <div class="ss-field">
+                    <svg class="ss-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16a6.47 6.47 0 004.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 115 9.5 4.5 4.5 0 019.5 14z"/></svg>
+                    <input type="text" class="ss-input" id="ss-att-history-input"
+                      placeholder="Search student…" autocomplete="off" spellcheck="false">
+                    <button type="button" class="ss-clear" id="ss-att-history-clear" title="Clear">&times;</button>
+                  </div>
+                  <input type="hidden" id="att-history-student">
+                  <div class="ss-dropdown" id="ss-att-history-list"></div>
+                </div>
+              </div>
+
+              <!-- Start Date -->
+              <div class="att-calc-filter-group" style="flex:0.8;min-width:140px">
+                <label class="form-label" for="att-calc-start" style="margin:0;font-size:.78rem;font-weight:600">Start Date</label>
+                <input id="att-calc-start" type="date" class="form-input" style="height:38px;padding:.4rem .6rem" />
+              </div>
+
+              <!-- End Date -->
+              <div class="att-calc-filter-group" style="flex:0.8;min-width:140px">
+                <label class="form-label" for="att-calc-end" style="margin:0;font-size:.78rem;font-weight:600">End Date</label>
+                <input id="att-calc-end" type="date" class="form-input" style="height:38px;padding:.4rem .6rem" />
+              </div>
+
+              <!-- Quick Filters -->
+              <div class="att-calc-filter-group" style="flex:1.2;min-width:230px">
+                <label class="form-label" style="margin:0;font-size:.78rem;font-weight:600">Quick Filters</label>
+                <div class="att-quick-btn-group">
+                  <button type="button" id="btn-quick-2weeks" class="btn btn-sm btn-outline">Last 2 Weeks</button>
+                  <button type="button" id="btn-quick-1month" class="btn btn-sm btn-outline">Last Month</button>
+                  <button type="button" id="btn-quick-all" class="btn btn-sm btn-outline">All Time</button>
+                </div>
+              </div>
+
+              <!-- Action button -->
+              <div class="att-calc-filter-group" style="align-self:flex-end">
+                <button type="button" id="btn-att-history" class="btn btn-primary btn-sm" style="height:38px;padding:0 1.1rem;display:flex;align-items:center;gap:.35rem">
+                  <svg viewBox="0 0 24 24" fill="currentColor" style="width:15px;height:15px">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                  </svg>
+                  Calculate
+                </button>
+              </div>
+            </div>
+
+            <!-- Date validation warning banner -->
+            <div id="att-calc-date-warning" style="display:none;background:var(--danger-light);color:var(--danger);padding:.6rem 1rem;border-radius:var(--radius);font-size:.82rem;font-weight:500;margin-bottom:1rem;border-left:3px solid var(--danger)">
+              ⚠ Start Date cannot be after End Date. Please adjust your date range.
+            </div>
+
+            <!-- Empty / Prompt State (when no student selected) -->
+            <div id="att-calc-empty-prompt" class="att-calc-empty-prompt">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2zm0 18H4V8h16v13z"/>
+              </svg>
+              <h4>Select a student to calculate attendance</h4>
+              <p>Choose a student and optional date range above to view recorded sessions, attendance counts, and percentage.</p>
+            </div>
+
+            <!-- Results Section (when student selected) -->
+            <div id="att-calc-results" style="display:none">
+              <!-- 4 Stat Cards Grid -->
+              <div class="stats-grid" style="margin-bottom:1rem">
+                <!-- Total Recorded Sessions -->
+                <div class="stat-card">
+                  <div class="stat-icon blue">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2zm0 18H4V8h16v13z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <div class="stat-label">Total Recorded Sessions</div>
+                    <div class="stat-value" id="calc-stat-total">0</div>
+                  </div>
+                </div>
+
+                <!-- Present Count -->
+                <div class="stat-card">
+                  <div class="stat-icon green">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <div class="stat-label">Present Count</div>
+                    <div class="stat-value" id="calc-stat-present">0</div>
+                    <div id="calc-stat-present-sub" style="font-size:.7rem;color:var(--text-muted);display:none"></div>
+                  </div>
+                </div>
+
+                <!-- Absent Count -->
+                <div class="stat-card">
+                  <div class="stat-icon red">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <div class="stat-label">Absent Count</div>
+                    <div class="stat-value" id="calc-stat-absent">0</div>
+                  </div>
+                </div>
+
+                <!-- Attendance Percentage -->
+                <div class="stat-card" id="calc-stat-pct-card">
+                  <div class="stat-icon green" id="calc-stat-pct-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.5 11C9.43 11 11 9.43 11 7.5S9.43 4 7.5 4 4 5.57 4 7.5 5.57 11 7.5 11zm0-5C8.33 6 9 6.67 9 7.5S8.33 9 7.5 9 6 8.33 6 7.5 6.67 6 7.5 6zm9 7c-1.93 0-3.5 1.57-3.5 3.5s1.57 3.5 3.5 3.5 3.5-1.57 3.5-3.5-1.57-3.5-3.5-3.5zm0 5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm3.79-13.71L5.79 19.79l1.42 1.42L21.71 6.71l-1.42-1.42z"/>
+                    </svg>
+                  </div>
+                  <div class="stat-info">
+                    <div class="stat-label">Attendance Percentage</div>
+                    <div class="stat-value" id="calc-stat-pct">—</div>
+                    <div id="calc-stat-pct-status" style="margin-top:.2rem"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Calculation formula banner & Progress bar -->
+              <div class="att-calc-summary-banner">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.45rem;flex-wrap:wrap;gap:.5rem">
+                  <span style="font-size:.82rem;font-weight:600;color:var(--text-secondary)" id="calc-formula-display">
+                    Formula: (Present Count ÷ Total Recorded Sessions) × 100
+                  </span>
+                  <span style="font-size:.78rem;color:var(--text-muted);font-weight:500" id="calc-date-summary"></span>
+                </div>
+                <div class="progress-bar-outer" style="height:9px">
+                  <div class="progress-bar-inner green" id="calc-progress-bar" style="width:0%"></div>
+                </div>
+                <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;display:flex;align-items:center;gap:.35rem">
+                  <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px;flex-shrink:0;color:var(--primary)"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                  <span>Counted only from actually recorded sessions. Dates without attendance records are not counted as absences.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Attendance History Table Section -->
+            <div id="att-history-section" style="display:none;margin-top:1.5rem">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
+                <h4 style="font-size:.9rem;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:.4rem">
+                  <span>Session History Log</span>
+                </h4>
+                <span id="att-history-count" style="font-size:.8rem;color:var(--text-muted)"></span>
+              </div>
               <div class="table-wrapper">
                 <table>
                   <thead>
@@ -480,7 +634,7 @@
         <div class="page" id="page-followups">
           <div class="section-header">
             <h2>Follow-ups</h2>
-            <div style="display:flex;gap:.4rem">
+            <div class="filter-btn-group">
               <button class="btn btn-sm btn-outline followup-filter-btn active" data-filter="all">All</button>
               <button class="btn btn-sm btn-outline followup-filter-btn" data-filter="pending">Pending</button>
               <button class="btn btn-sm btn-outline followup-filter-btn" data-filter="in_progress">In Progress</button>
@@ -636,7 +790,7 @@
 
   <!-- ── Student Detail ── -->
   <div class="modal-overlay" id="modal-student-detail">
-    <div class="modal" style="max-width:680px" role="dialog" aria-modal="true">
+    <div class="modal modal-lg" role="dialog" aria-modal="true">
       <div class="modal-header">
         <h3 id="detail-student-name">Student Detail</h3>
         <button class="modal-close" aria-label="Close">
@@ -719,7 +873,7 @@
 
   <!-- ── Mark Entry ── -->
   <div class="modal-overlay" id="modal-mark-entry">
-    <div class="modal" style="max-width:600px" role="dialog" aria-modal="true">
+    <div class="modal modal-md" role="dialog" aria-modal="true">
       <div class="modal-header">
         <h3 id="mark-entry-title">Enter Marks</h3>
         <button class="modal-close" aria-label="Close">
@@ -813,6 +967,10 @@
       });
       document.querySelectorAll('#modal-student-detail .tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      // Render or resize chart when performance chart tab becomes visible
+      if (tab === 'chart' && window._currentDetailSid) {
+        renderDetailChart(window._currentDetailSid, computeStudentStats(window._currentDetailSid));
+      }
       // Lazy-render tracker chart when tab becomes visible
       if (tab === 'tracker' && window._currentDetailSid) {
         renderTrackerChart(window._currentDetailSid);

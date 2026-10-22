@@ -66,6 +66,17 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function toIsoDate(d) {
+  if (!d) return '';
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  const dateObj = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dateObj.getTime())) return '';
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function getInitials(name = '') {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 }
@@ -616,11 +627,11 @@ function renderRiskCard(r) {
   return `
     <div class="risk-card ${r.colorKey}">
       <div class="risk-card-header">
-        <div>
+        <div style="flex:1;min-width:180px;word-break:break-word">
           <div class="risk-card-name">${escHtml(s.name)}</div>
           <div class="risk-card-meta">${escHtml(s.roll_number)} · ${escHtml(s.course)} · Sem ${s.semester}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;flex-shrink:0">
           <span class="risk-badge risk-${r.colorKey}">${r.level} Risk</span>
           <button class="btn btn-sm btn-outline" onclick="openStudentDetail('${s.id}')">View Detail</button>
         </div>
@@ -695,6 +706,20 @@ function renderDashboard() {
   renderDashboardChart();
 }
 
+function getThemeChartColors() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    (!document.documentElement.getAttribute('data-theme') && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  return {
+    isDark,
+    gridColor: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(15, 23, 42, 0.06)',
+    tickColor: isDark ? '#94a3b8' : '#64748b',
+    tooltipBg: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+    tooltipTitle: isDark ? '#f8fafc' : '#0f172a',
+    tooltipBody: isDark ? '#cbd5e1' : '#334155',
+    tooltipBorder: isDark ? 'rgba(45, 212, 191, 0.35)' : 'rgba(13, 148, 136, 0.35)',
+  };
+}
+
 function renderDashboardChart() {
   const canvas = $('dash-chart');
   if (!canvas || typeof Chart === 'undefined') return;
@@ -703,6 +728,28 @@ function renderDashboardChart() {
   const data = students.slice(0, 12).map(s => computeStudentStats(s.id).attPct);
 
   if (window._dashChart) window._dashChart.destroy();
+
+  const ctx = canvas.getContext('2d');
+  const chartColors = getThemeChartColors();
+
+  // Create refined vertical gradients for bars
+  const bgGradients = data.map(v => {
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    if (v >= 75) {
+      grad.addColorStop(0, '#14b8a6');
+      grad.addColorStop(1, '#0d9488');
+    } else if (v >= 60) {
+      grad.addColorStop(0, '#fbbf24');
+      grad.addColorStop(1, '#d97706');
+    } else {
+      grad.addColorStop(0, '#f87171');
+      grad.addColorStop(1, '#dc2626');
+    }
+    return grad;
+  });
+
+  const borderColors = data.map(v => v >= 75 ? '#2dd4bf' : v >= 60 ? '#f59e0b' : '#ef4444');
+
   window._dashChart = new Chart(canvas, {
     type: 'bar',
     data: {
@@ -710,18 +757,56 @@ function renderDashboardChart() {
       datasets: [{
         label: 'Attendance %',
         data,
-        backgroundColor: data.map(v => v >= 75 ? '#dcfce7' : v >= 60 ? '#fef3c7' : '#fee2e2'),
-        borderColor: data.map(v => v >= 75 ? '#16a34a' : v >= 60 ? '#d97706' : '#dc2626'),
-        borderWidth: 2,
-        borderRadius: 4,
+        backgroundColor: bgGradients,
+        borderColor: borderColors,
+        borderWidth: 1.5,
+        borderRadius: 6,
+        borderSkipped: false,
+        maxBarThickness: 38,
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 350,
+        easing: 'easeOutQuart'
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: chartColors.tooltipBg,
+          titleColor: chartColors.tooltipTitle,
+          bodyColor: chartColors.tooltipBody,
+          borderColor: chartColors.tooltipBorder,
+          borderWidth: 1,
+          padding: { top: 8, bottom: 8, left: 12, right: 12 },
+          cornerRadius: 8,
+          boxPadding: 4,
+          usePointStyle: true,
+          callbacks: {
+            label: context => ` Attendance: ${context.parsed.y}%`
+          }
+        }
+      },
       scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
-        x: { grid: { display: false } }
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: v => v + '%',
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { color: chartColors.gridColor }
+        },
+        x: {
+          ticks: {
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { display: false }
+        }
       }
     }
   });
@@ -772,13 +857,13 @@ function renderStudentTable(query = '') {
       : `<span class="badge badge-gray">—</span>`;
 
     return `<tr>
-      <td>${escHtml(s.name)}</td>
-      <td>${escHtml(s.roll_number)}</td>
-      <td>${escHtml(s.course)}</td>
+      <td class="cell-student-name">${escHtml(s.name)}</td>
+      <td class="cell-student-roll">${escHtml(s.roll_number)}</td>
+      <td class="cell-student-course">${escHtml(s.course)}</td>
       <td>${attBadge}</td>
       <td>${marksBadgeHtml}</td>
       <td>${alerts.length ? `<span class="badge badge-red">${alerts.length}</span>` : '<span class="badge badge-green">0</span>'}</td>
-      <td>
+      <td class="cell-actions">
         <div style="display:flex;gap:.3rem">
           <button class="btn-icon" title="View" onclick="openStudentDetail('${s.id}')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
@@ -920,18 +1005,20 @@ function openStudentDetail(sid) {
     $('detail-marks').innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">No marks recorded yet.</p>';
   } else {
     $('detail-marks').innerHTML = `
-      <table>
-        <thead><tr><th>Assessment</th><th>Date</th><th>Score</th><th>Max</th><th>%</th></tr></thead>
-        <tbody>${stats.scoredAssessments.map(a => `
-          <tr>
-            <td>${escHtml(a.name)}</td>
-            <td>${formatDate(a.date)}</td>
-            <td>${a.score}</td>
-            <td>${a.max}</td>
-            <td><span class="badge ${marksBadge(a.score, a.max)}">${a.pct}%</span></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>`;
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Assessment</th><th>Date</th><th>Score</th><th>Max</th><th>%</th></tr></thead>
+          <tbody>${stats.scoredAssessments.map(a => `
+            <tr>
+              <td>${escHtml(a.name)}</td>
+              <td>${formatDate(a.date)}</td>
+              <td>${a.score}</td>
+              <td>${a.max}</td>
+              <td><span class="badge ${marksBadge(a.score, a.max)}">${a.pct}%</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
   }
 
   // Chart
@@ -963,6 +1050,15 @@ function renderDetailChart(sid, stats) {
   if (!canvas || !stats.scoredAssessments.length || typeof Chart === 'undefined') return;
   const sorted = [...stats.scoredAssessments].sort((a, b) => new Date(a.date) - new Date(b.date));
   if (window._detailChart) window._detailChart.destroy();
+
+  const ctx = canvas.getContext('2d');
+  const chartColors = getThemeChartColors();
+
+  // Teal-to-purple area gradient
+  const areaGrad = ctx.createLinearGradient(0, 0, 0, 220);
+  areaGrad.addColorStop(0, chartColors.isDark ? 'rgba(20, 184, 166, 0.35)' : 'rgba(13, 148, 136, 0.22)');
+  areaGrad.addColorStop(1, chartColors.isDark ? 'rgba(139, 92, 246, 0.02)' : 'rgba(124, 58, 237, 0.02)');
+
   window._detailChart = new Chart(canvas, {
     type: 'line',
     data: {
@@ -970,20 +1066,60 @@ function renderDetailChart(sid, stats) {
       datasets: [{
         label: 'Score %',
         data: sorted.map(a => a.pct),
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37,99,235,.08)',
-        borderWidth: 2,
-        pointRadius: 4,
+        borderColor: chartColors.isDark ? '#2dd4bf' : '#0d9488',
+        backgroundColor: areaGrad,
+        borderWidth: 2.5,
+        pointRadius: 4.5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: chartColors.isDark ? '#2dd4bf' : '#0d9488',
+        pointBorderColor: chartColors.isDark ? '#111827' : '#ffffff',
+        pointBorderWidth: 2,
         fill: true,
-        tension: 0.3,
+        tension: 0.35,
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 350,
+        easing: 'easeOutQuart'
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: chartColors.tooltipBg,
+          titleColor: chartColors.tooltipTitle,
+          bodyColor: chartColors.tooltipBody,
+          borderColor: chartColors.tooltipBorder,
+          borderWidth: 1,
+          padding: { top: 8, bottom: 8, left: 12, right: 12 },
+          cornerRadius: 8,
+          boxPadding: 4,
+          usePointStyle: true,
+          callbacks: {
+            label: context => ` Score: ${context.parsed.y}%`
+          }
+        }
+      },
       scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
-        x: { grid: { display: false } }
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: v => v + '%',
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { color: chartColors.gridColor }
+        },
+        x: {
+          ticks: {
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { display: false }
+        }
       }
     }
   });
@@ -1086,11 +1222,11 @@ function renderImprovementTracker(sid, stats) {
             : '<span class="imp-neutral">→ 0%</span>';
       return `
         <div class="tracker-assess-row">
-          <div>
+          <div style="flex:1;min-width:140px;word-break:break-word">
             <div style="font-weight:500;font-size:.85rem">${escHtml(a.name)}</div>
             <div style="font-size:.72rem;color:var(--text-muted)">${formatDate(a.date)}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:.6rem">
+          <div style="display:flex;align-items:center;gap:.6rem;flex-shrink:0">
             <span class="badge ${marksBadge(a.score, a.max)}">${a.pct}%</span>
             ${deltaHtml}
           </div>
@@ -1149,30 +1285,78 @@ function renderTrackerChart(sid) {
   if (sorted.length < 2) return;
 
   if (window._trackerChart) window._trackerChart.destroy();
+
+  const ctx = canvas.getContext('2d');
+  const chartColors = getThemeChartColors();
+
+  // Purple-to-teal area gradient
+  const areaGrad = ctx.createLinearGradient(0, 0, 0, 200);
+  areaGrad.addColorStop(0, chartColors.isDark ? 'rgba(139, 92, 246, 0.35)' : 'rgba(124, 58, 237, 0.22)');
+  areaGrad.addColorStop(1, chartColors.isDark ? 'rgba(20, 184, 166, 0.02)' : 'rgba(13, 148, 136, 0.02)');
+
   window._trackerChart = new Chart(canvas, {
     type: 'line',
     data: {
       labels: sorted.map(a => a.name),
       datasets: [{
         label: 'Score %',
-        data:  sorted.map(a => a.pct),
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37,99,235,.1)',
+        data: sorted.map(a => a.pct),
+        borderColor: chartColors.isDark ? '#a78bfa' : '#7c3aed',
+        backgroundColor: areaGrad,
         borderWidth: 2.5,
         pointRadius: 5,
+        pointHoverRadius: 7.5,
         pointBackgroundColor: sorted.map(a =>
-          a.pct >= 60 ? '#16a34a' : a.pct >= 40 ? '#d97706' : '#dc2626'
+          a.pct >= 60 ? '#10b981' : a.pct >= 40 ? '#f59e0b' : '#ef4444'
         ),
+        pointBorderColor: chartColors.isDark ? '#111827' : '#ffffff',
+        pointBorderWidth: 2,
         fill: true,
         tension: 0.35,
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 350,
+        easing: 'easeOutQuart'
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: chartColors.tooltipBg,
+          titleColor: chartColors.tooltipTitle,
+          bodyColor: chartColors.tooltipBody,
+          borderColor: chartColors.tooltipBorder,
+          borderWidth: 1,
+          padding: { top: 8, bottom: 8, left: 12, right: 12 },
+          cornerRadius: 8,
+          boxPadding: 4,
+          usePointStyle: true,
+          callbacks: {
+            label: context => ` Score: ${context.parsed.y}%`
+          }
+        }
+      },
       scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
-        x: { grid: { display: false } }
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: v => v + '%',
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { color: chartColors.gridColor }
+        },
+        x: {
+          ticks: {
+            color: chartColors.tickColor,
+            font: { family: "'Inter', sans-serif", size: 11, weight: '500' }
+          },
+          grid: { display: false }
+        }
       }
     }
   });
@@ -1184,9 +1368,10 @@ function renderTrackerChart(sid) {
 function renderAttendancePage() {
   populateStudentSelects();
   // Set today's date
-  const today = new Date().toISOString().split('T')[0];
+  const today = toIsoDate(new Date());
   $('att-date').value = today;
   renderAttGrid();
+  updateAttCalculator();
 }
 
 function renderAttGrid() {
@@ -1200,11 +1385,11 @@ function renderAttGrid() {
     const existing = allAttendance.find(a => a.student_id === s.id && a.date === date);
     const status = existing?.status || '';
     return `<tr>
-      <td>${escHtml(s.name)}</td>
-      <td>${escHtml(s.roll_number)}</td>
-      <td>${escHtml(s.course)} (Sem ${s.semester})</td>
-      <td>
-        <div style="display:flex;gap:.4rem">
+      <td class="cell-student-name">${escHtml(s.name)}</td>
+      <td class="cell-student-roll">${escHtml(s.roll_number)}</td>
+      <td class="cell-student-course">${escHtml(s.course)} (Sem ${s.semester})</td>
+      <td class="cell-att-actions">
+        <div class="att-status-btn-group">
           <button class="btn btn-sm ${status === 'present' ? 'btn-primary' : 'btn-outline'}" onclick="markAttendance('${s.id}','${date}','present',this)">Present</button>
           <button class="btn btn-sm ${status === 'late' ? 'btn-primary' : 'btn-outline'}" onclick="markAttendance('${s.id}','${date}','late',this)">Late</button>
           <button class="btn btn-sm ${status === 'absent' ? 'btn-danger' : 'btn-outline'}" onclick="markAttendance('${s.id}','${date}','absent',this)">Absent</button>
@@ -1232,26 +1417,201 @@ async function markAttendance(studentId, date, status, btn) {
   }
   if (error) { showToast(error.message, 'error'); return; }
   renderAttGrid();
+  updateAttCalculator();
 }
 
-// Attendance history
-$('btn-att-history').addEventListener('click', async () => {
-  const sid = $('att-history-student').value;  // hidden input set by SearchableSelect
-  if (!sid) { showToast('Select a student first.', 'warning'); return; }
-  const recs = allAttendance.filter(a => a.student_id === sid)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
-  const tbody = $('att-history-tbody');
-  if (!recs.length) {
-    tbody.innerHTML = `<tr><td colspan="2" style="text-align:center;padding:1rem;color:var(--text-muted)">No records found.</td></tr>`;
-  } else {
-    tbody.innerHTML = recs.map(r => `
-      <tr>
-        <td>${formatDate(r.date)}</td>
-        <td><span class="badge ${r.status === 'present' ? 'badge-green' : r.status === 'late' ? 'badge-yellow' : 'badge-red'}">${r.status}</span></td>
-      </tr>`).join('');
+// ── Attendance Percentage Calculator ────────────────────────
+function clearQuickFilterActive() {
+  $('btn-quick-2weeks')?.classList.remove('active');
+  $('btn-quick-1month')?.classList.remove('active');
+  $('btn-quick-all')?.classList.remove('active');
+}
+
+function setQuickFilter(type) {
+  clearQuickFilterActive();
+  const today = new Date();
+  const endIso = toIsoDate(today);
+
+  if (type === '2weeks') {
+    const start = new Date();
+    start.setDate(start.getDate() - 14);
+    if ($('att-calc-start')) $('att-calc-start').value = toIsoDate(start);
+    if ($('att-calc-end')) $('att-calc-end').value = endIso;
+    $('btn-quick-2weeks')?.classList.add('active');
+  } else if (type === '1month') {
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    if ($('att-calc-start')) $('att-calc-start').value = toIsoDate(start);
+    if ($('att-calc-end')) $('att-calc-end').value = endIso;
+    $('btn-quick-1month')?.classList.add('active');
+  } else if (type === 'all') {
+    if ($('att-calc-start')) $('att-calc-start').value = '';
+    if ($('att-calc-end')) $('att-calc-end').value = '';
+    $('btn-quick-all')?.classList.add('active');
   }
-  $('att-history-section').style.display = 'block';
+  updateAttCalculator();
+}
+
+function updateAttCalculator() {
+  const sid = $('att-history-student') ? $('att-history-student').value : '';
+  const startDate = $('att-calc-start') ? $('att-calc-start').value : '';
+  const endDate = $('att-calc-end') ? $('att-calc-end').value : '';
+  const warningEl = $('att-calc-date-warning');
+
+  // Check if Start Date > End Date
+  if (startDate && endDate && startDate > endDate) {
+    if (warningEl) warningEl.style.display = 'block';
+  } else {
+    if (warningEl) warningEl.style.display = 'none';
+  }
+
+  // If no student selected, show empty prompt state
+  if (!sid) {
+    if ($('att-calc-results')) $('att-calc-results').style.display = 'none';
+    if ($('att-calc-empty-prompt')) $('att-calc-empty-prompt').style.display = 'block';
+    if ($('att-history-section')) $('att-history-section').style.display = 'none';
+    return;
+  }
+
+  // If date range is invalid (start > end), hide results
+  if (startDate && endDate && startDate > endDate) {
+    if ($('att-calc-results')) $('att-calc-results').style.display = 'none';
+    if ($('att-calc-empty-prompt')) $('att-calc-empty-prompt').style.display = 'none';
+    if ($('att-history-section')) $('att-history-section').style.display = 'none';
+    return;
+  }
+
+  // Filter records for student within the selected date range
+  // Count ONLY sessions where attendance was actually recorded
+  const recs = allAttendance
+    .filter(a => {
+      if (a.student_id !== sid) return false;
+      if (startDate && a.date < startDate) return false;
+      if (endDate && a.date > endDate) return false;
+      return true;
+    })
+    .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
+
+  // Metrics:
+  // - Total Recorded Sessions: count only sessions actually recorded
+  // - Present Count: students recorded as present (including late)
+  // - Absent Count: students recorded as absent
+  // - Attendance Percentage: (Present Count ÷ Total Recorded Sessions) × 100
+  const total = recs.length;
+  const presentOnly = recs.filter(r => r.status === 'present').length;
+  const lateCount = recs.filter(r => r.status === 'late').length;
+  const present = presentOnly + lateCount;
+  const absent = recs.filter(r => r.status === 'absent').length;
+
+  const percentage = total > 0 ? (present / total) * 100 : 0;
+  const pctRounded = Math.round(percentage * 10) / 10;
+  const pctDisplay = total > 0
+    ? (Number.isInteger(pctRounded) ? `${pctRounded}%` : `${pctRounded.toFixed(1)}%`)
+    : '—';
+
+  // Update stat cards DOM
+  if ($('calc-stat-total')) $('calc-stat-total').textContent = total;
+  if ($('calc-stat-present')) $('calc-stat-present').textContent = present;
+  if ($('calc-stat-absent')) $('calc-stat-absent').textContent = absent;
+  if ($('calc-stat-pct')) $('calc-stat-pct').textContent = pctDisplay;
+
+  // Breakdown subtext if any late sessions exist
+  const subEl = $('calc-stat-present-sub');
+  if (subEl) {
+    if (lateCount > 0) {
+      subEl.textContent = `(${presentOnly} on-time, ${lateCount} late)`;
+      subEl.style.display = 'block';
+    } else {
+      subEl.style.display = 'none';
+    }
+  }
+
+  // Visual status badge and progress bar
+  const pctColor = total === 0 ? 'blue' : (percentage >= 75 ? 'green' : percentage >= 60 ? 'yellow' : 'red');
+  const pctLabel = total === 0
+    ? 'No Recorded Sessions'
+    : (percentage >= 75 ? 'Good Attendance (≥ 75%)' : percentage >= 60 ? 'Low Attendance (< 75%)' : 'Critical Attendance (< 60%)');
+  const badgeClass = total === 0 ? 'badge-blue' : (pctColor === 'green' ? 'badge-green' : pctColor === 'yellow' ? 'badge-yellow' : 'badge-red');
+
+  if ($('calc-stat-pct-icon')) $('calc-stat-pct-icon').className = `stat-icon ${pctColor}`;
+  if ($('calc-stat-pct-status')) {
+    $('calc-stat-pct-status').innerHTML = `<span class="badge ${badgeClass}">${pctLabel}</span>`;
+  }
+  if ($('calc-progress-bar')) {
+    $('calc-progress-bar').className = `progress-bar-inner ${pctColor}`;
+    $('calc-progress-bar').style.width = `${total > 0 ? Math.min(100, Math.max(0, Math.round(percentage))) : 0}%`;
+  }
+
+  // Formula & Date summary
+  if ($('calc-formula-display')) {
+    if (total > 0) {
+      $('calc-formula-display').innerHTML = `<strong>Calculation:</strong> (${present} present ÷ ${total} recorded) × 100 = <strong>${pctDisplay}</strong>`;
+    } else {
+      $('calc-formula-display').innerHTML = `<strong>Formula:</strong> (Present Count ÷ Total Recorded Sessions) × 100`;
+    }
+  }
+  if ($('calc-date-summary')) {
+    if (startDate && endDate) {
+      $('calc-date-summary').textContent = `${formatDate(startDate)} – ${formatDate(endDate)}`;
+    } else if (startDate) {
+      $('calc-date-summary').textContent = `From ${formatDate(startDate)}`;
+    } else if (endDate) {
+      $('calc-date-summary').textContent = `Up to ${formatDate(endDate)}`;
+    } else {
+      $('calc-date-summary').textContent = 'All recorded sessions';
+    }
+  }
+
+  // Session History Log Table
+  const tbody = $('att-history-tbody');
+  const countSpan = $('att-history-count');
+  if (tbody) {
+    if (!recs.length) {
+      tbody.innerHTML = `<tr><td colspan="2" style="text-align:center;padding:1.5rem;color:var(--text-muted)">No attendance records found for this student in the selected range.</td></tr>`;
+      if (countSpan) countSpan.textContent = '0 sessions';
+    } else {
+      tbody.innerHTML = recs.map(r => `
+        <tr>
+          <td>${formatDate(r.date)}</td>
+          <td><span class="badge ${r.status === 'present' ? 'badge-green' : r.status === 'late' ? 'badge-yellow' : 'badge-red'}">${r.status}</span></td>
+        </tr>`).join('');
+      if (countSpan) countSpan.textContent = `${recs.length} session${recs.length === 1 ? '' : 's'}`;
+    }
+  }
+
+  if ($('att-calc-results')) $('att-calc-results').style.display = 'block';
+  if ($('att-calc-empty-prompt')) $('att-calc-empty-prompt').style.display = 'none';
+  if ($('att-history-section')) $('att-history-section').style.display = 'block';
+}
+
+// Bind Calculator Event Listeners
+$('btn-att-history').addEventListener('click', () => {
+  const sid = $('att-history-student')?.value;
+  if (!sid) {
+    showToast('Select a student first.', 'warning');
+    $('ss-att-history-input')?.focus();
+    return;
+  }
+  updateAttCalculator();
 });
+
+$('att-history-student').addEventListener('change', () => {
+  updateAttCalculator();
+});
+
+$('att-calc-start').addEventListener('change', () => {
+  clearQuickFilterActive();
+  updateAttCalculator();
+});
+
+$('att-calc-end').addEventListener('change', () => {
+  clearQuickFilterActive();
+  updateAttCalculator();
+});
+
+$('btn-quick-2weeks').addEventListener('click', () => setQuickFilter('2weeks'));
+$('btn-quick-1month').addEventListener('click', () => setQuickFilter('1month'));
+$('btn-quick-all').addEventListener('click', () => setQuickFilter('all'));
 
 // ============================================================
 // 12. ASSESSMENTS PAGE
@@ -1271,15 +1631,17 @@ function renderAssessmentList() {
   }
   list.innerHTML = assessments.map(a => `
     <div class="card" style="margin-bottom:.75rem">
-      <div class="card-header">
-        <div style="flex:1">
+      <div class="card-header" style="flex-wrap:wrap;gap:.75rem">
+        <div style="flex:1;min-width:180px;word-break:break-word">
           <div style="font-weight:600">${escHtml(a.name)}</div>
           <div style="font-size:.8rem;color:var(--text-secondary)">Max marks: ${a.max_marks} · ${formatDate(a.date)}</div>
         </div>
-        <button class="btn btn-sm btn-outline" onclick="openMarkEntry('${a.id}')">Enter Marks</button>
-        <button class="btn-icon danger" onclick="deleteAssessment('${a.id}','${escHtml(a.name)}')">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        </button>
+        <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0">
+          <button class="btn btn-sm btn-outline" onclick="openMarkEntry('${a.id}')">Enter Marks</button>
+          <button class="btn-icon danger" onclick="deleteAssessment('${a.id}','${escHtml(a.name)}')">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
       </div>
     </div>`).join('');
 }
@@ -1423,11 +1785,11 @@ function renderFollowupTable(filter = 'all') {
       resolved:    '<span class="badge badge-green">Resolved</span>',
     }[f.status] || '';
     return `<tr>
-      <td>${s ? escHtml(s.name) : '—'}</td>
-      <td>${RULES[f.alert_type]?.label || f.alert_type}</td>
-      <td>${f.note ? escHtml(f.note) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="cell-student-name">${s ? escHtml(s.name) : '—'}</td>
+      <td class="cell-alert-type" style="white-space:nowrap">${RULES[f.alert_type]?.label || f.alert_type}</td>
+      <td class="cell-followup-note">${f.note ? escHtml(f.note) : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>${statusBadge}</td>
-      <td>
+      <td style="white-space:nowrap">
         <select class="form-select" style="padding:.25rem .5rem;font-size:.8rem;width:130px"
           onchange="updateFollowupStatus('${f.id}', this.value)">
           <option value="pending"     ${f.status === 'pending'     ? 'selected' : ''}>Pending</option>
@@ -1435,7 +1797,7 @@ function renderFollowupTable(filter = 'all') {
           <option value="resolved"    ${f.status === 'resolved'    ? 'selected' : ''}>Resolved</option>
         </select>
       </td>
-      <td style="text-align:center">
+      <td class="cell-actions" style="text-align:center">
         <button class="btn-icon danger" title="Delete follow-up"
           onclick="deleteFollowup('${f.id}', ${s ? `'${escHtml(s.name)}'` : "'this follow-up'"})">
           <svg viewBox="0 0 24 24" fill="currentColor">
@@ -1609,6 +1971,7 @@ class SearchableSelect {
       this._textInput.value  = item.label;
       this._valueInput.value = item.value;
       this._clearBtn.style.display = 'flex';
+      this._valueInput.dispatchEvent(new Event('change', { bubbles: true }));
     } else {
       this.reset();
     }
@@ -1625,6 +1988,7 @@ class SearchableSelect {
     this._valueInput.value = '';
     this._clearBtn.style.display = 'none';
     this._closeList();
+    this._valueInput.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   // ── Private ──────────────────────────────────────────────────
@@ -1640,6 +2004,7 @@ class SearchableSelect {
       this._valueInput.value = '';
       this._clearBtn.style.display = this._textInput.value ? 'flex' : 'none';
       this._openList();
+      this._valueInput.dispatchEvent(new Event('change', { bubbles: true }));
     });
     // Keyboard navigation
     this._textInput.addEventListener('keydown', e => {
@@ -1799,9 +2164,41 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================================
+// 16b. THEME (Light / Dark)
+// ============================================================
+function initTheme() {
+  const saved = localStorage.getItem('cp_theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+  }
+  const btn = $('btn-theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      const isDark = current === 'dark' || (!current && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('cp_theme', next);
+
+      // Re-render active charts to synchronize gridlines, tooltips, and gradients
+      if (window._dashChart) {
+        renderDashboardChart();
+      }
+      if (window._detailChart && window._currentDetailSid) {
+        renderDetailChart(window._currentDetailSid, computeStudentStats(window._currentDetailSid));
+      }
+      if (window._trackerChart && window._currentDetailSid) {
+        renderTrackerChart(window._currentDetailSid);
+      }
+    });
+  }
+}
+
+// ============================================================
 // 17. BOOT
 // ============================================================
 window.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   checkConfig();
   initSearchableSelects();   // build searchable dropdown widgets
   navigate('page-dashboard');
