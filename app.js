@@ -99,17 +99,290 @@ function marksBadge(score, max) {
   return 'badge-red';
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+const escHtml = escapeHtml;
+
 // ============================================================
 // 5. AUTH
 // ============================================================
+let resendCooldownEnd = 0;
+let resendCooldownTimer = null;
+
+function isRateLimitError(err) {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  const code = String(err.code || '').toLowerCase();
+  return err.status === 429 || code === 'over_email_send_rate_limit' || msg.includes('rate limit');
+}
+
+function isEmailNotConfirmedError(err) {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  const code = String(err.code || '').toLowerCase();
+  return code === 'email_not_confirmed' || msg.includes('email not confirmed');
+}
+
+function isUserAlreadyRegisteredError(err) {
+  if (!err) return false;
+  const msg = String(err.message || '').toLowerCase();
+  return msg.includes('already registered') || msg.includes('user already exists');
+}
+
+function getResendCooldownRemaining() {
+  const remaining = Math.ceil((resendCooldownEnd - Date.now()) / 1000);
+  return remaining > 0 ? remaining : 0;
+}
+
+function startResendCooldown(seconds = 60) {
+  resendCooldownEnd = Date.now() + seconds * 1000;
+  updateCooldownButtons();
+  if (resendCooldownTimer) clearInterval(resendCooldownTimer);
+  resendCooldownTimer = setInterval(() => {
+    const left = getResendCooldownRemaining();
+    updateCooldownButtons();
+    if (left <= 0) {
+      clearInterval(resendCooldownTimer);
+      resendCooldownTimer = null;
+    }
+  }, 1000);
+}
+
+function updateCooldownButtons() {
+  const left = getResendCooldownRemaining();
+  document.querySelectorAll('.btn-resend-verification').forEach(btn => {
+    if (left > 0) {
+      btn.disabled = true;
+      btn.textContent = `Resend in ${left}s`;
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Resend Verification Email';
+    }
+  });
+}
+
+function showAuthNotice({ type = 'info', title = '', body = '', actions = [] }) {
+  const box = $('auth-notice');
+  if (!box) return;
+
+  box.className = `auth-notice ${type}`;
+  box.style.display = 'block';
+
+  const iconMap = {
+    danger: '⚠',
+    warning: 'ℹ',
+    success: '✓',
+    info: '💡'
+  };
+
+  const iconEl = $('auth-notice-icon');
+  if (iconEl) iconEl.textContent = iconMap[type] || 'ℹ';
+
+  const titleEl = $('auth-notice-title');
+  if (titleEl) titleEl.textContent = title;
+
+  const bodyEl = $('auth-notice-body');
+  if (bodyEl) bodyEl.innerHTML = body;
+
+  const actContainer = $('auth-notice-actions');
+  if (actContainer) {
+    actContainer.innerHTML = '';
+    actions.forEach(act => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `auth-notice-btn ${act.isPrimary ? 'primary' : ''} ${act.isResend ? 'btn-resend-verification' : ''}`;
+      b.textContent = act.label;
+      if (act.disabled) b.disabled = true;
+      b.addEventListener('click', () => act.onClick(b));
+      actContainer.appendChild(b);
+    });
+  }
+
+  updateCooldownButtons();
+}
+
+function hideAuthNotice() {
+  const box = $('auth-notice');
+  if (box) box.style.display = 'none';
+}
+
+function switchAuthTab(tab, prefillEmail = '') {
+  document.querySelectorAll('.auth-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  $('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  $('register-form').style.display = tab === 'register' ? 'block' : 'none';
+  clearErrors('form-login');
+  clearErrors('form-register');
+
+  if (tab === 'login') {
+    if (prefillEmail) $('login-email').value = prefillEmail;
+    else if ($('reg-email').value) $('login-email').value = $('reg-email').value;
+    $('login-pass').focus();
+  } else {
+    if (prefillEmail) $('reg-email').value = prefillEmail;
+    else if ($('login-email').value) $('reg-email').value = $('login-email').value;
+    $('reg-pass').focus();
+  }
+}
+
+async function handleResendVerification(targetEmail, btnElement) {
+  const email = (targetEmail || $('login-email').value || $('reg-email').value || '').trim();
+  if (!validateEmail(email)) {
+    showToast('Please enter a valid email address first.', 'warning');
+    if ($('login-form').style.display !== 'none') {
+      fieldError('login-email', 'Enter a valid email.');
+    } else {
+      fieldError('reg-email', 'Enter a valid email.');
+    }
+    return;
+  }
+
+  const remaining = getResendCooldownRemaining();
+  if (remaining > 0) {
+    showToast(`Please wait ${remaining}s before requesting another verification email.`, 'warning');
+    return;
+  }
+
+  if (btnElement) {
+    btnElement.disabled = true;
+    btnElement.textContent = 'Sending…';
+  }
+
+  try {
+    const { error } = await db.auth.resend({
+      type: 'signup',
+      email
+    });
+
+    if (error) {
+      if (isRateLimitError(error)) {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Email Rate Limit Exceeded',
+          body: `Supabase's built-in email service has reached its hourly delivery limit.
+                 <br><br>
+                 • If you already registered, please search your <strong>inbox and spam/junk folder</strong> for the confirmation email sent earlier.
+                 <br>
+                 • Built-in SMTP rate limits reset hourly. Please wait a few minutes before trying again.
+                 <br>
+                 • <em>School/Admin note:</em> A project administrator can also confirm your account instantly in the <strong>Supabase Dashboard → Authentication → Users</strong> without waiting for email quotas.`,
+          actions: [
+            {
+              label: 'Switch to Sign In',
+              isPrimary: true,
+              onClick: () => switchAuthTab('login', email)
+            },
+            {
+              label: 'Resend Verification Email',
+              isResend: true,
+              disabled: true,
+              onClick: (b) => handleResendVerification(email, b)
+            }
+          ]
+        });
+        startResendCooldown(120); // 2-minute cooldown after triggering provider rate limit
+      } else {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Could Not Send Email',
+          body: escapeHtml(error.message || 'Failed to resend confirmation email.')
+        });
+      }
+    } else {
+      startResendCooldown(60);
+      showAuthNotice({
+        type: 'success',
+        title: 'Verification Email Sent',
+        body: `A new confirmation link was sent to <strong>${escapeHtml(email)}</strong>. Please check your inbox and spam folder, then sign in.`,
+        actions: [
+          {
+            label: 'Sign In',
+            isPrimary: true,
+            onClick: () => switchAuthTab('login', email)
+          },
+          {
+            label: 'Resend Verification Email',
+            isResend: true,
+            disabled: true,
+            onClick: (b) => handleResendVerification(email, b)
+          }
+        ]
+      });
+      showToast('Verification email resent! Check your inbox.', 'success');
+    }
+  } catch (err) {
+    showToast(err.message || 'Network error during resend', 'error');
+  } finally {
+    updateCooldownButtons();
+  }
+}
+
 async function initAuth() {
+  checkAuthUrlFeedback();
+
   const { data: { session } } = await db.auth.getSession();
   if (session) onLogin(session.user);
 
-  db.auth.onAuthStateChange((_event, session) => {
-    if (session) onLogin(session.user);
-    else onLogout();
+  db.auth.onAuthStateChange((event, session) => {
+    if (session) {
+      if (event === 'SIGNED_IN') {
+        hideAuthNotice();
+      }
+      onLogin(session.user);
+    } else {
+      onLogout();
+    }
   });
+
+  // Wire notice close button
+  $('auth-notice-close')?.addEventListener('click', hideAuthNotice);
+
+  // Wire auth tab buttons
+  document.querySelectorAll('.auth-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchAuthTab(btn.dataset.tab));
+  });
+
+  // Wire alternate footer links
+  $('link-to-register')?.addEventListener('click', () => switchAuthTab('register'));
+  $('link-to-login')?.addEventListener('click', () => switchAuthTab('login'));
+}
+
+function checkAuthUrlFeedback() {
+  try {
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      const errorDescription = params.get('error_description');
+      if (errorDescription) {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Verification Link Issue',
+          body: `The confirmation link could not be completed (${escapeHtml(errorDescription.replace(/\+/g, ' '))}). The link may have expired or already been used.`,
+          actions: [
+            {
+              label: 'Resend Verification Email',
+              onClick: (b) => handleResendVerification('', b)
+            },
+            {
+              label: 'Sign In',
+              isPrimary: true,
+              onClick: () => switchAuthTab('login')
+            }
+          ]
+        });
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  } catch (_) {}
 }
 
 function onLogin(user) {
@@ -147,9 +420,55 @@ $('form-login').addEventListener('submit', async e => {
 
   const btn = e.submitter;
   btn.disabled = true; btn.textContent = 'Signing in…';
-  const { error } = await db.auth.signInWithPassword({ email, password: pass });
-  btn.disabled = false; btn.textContent = 'Sign In';
-  if (error) showToast(error.message, 'error');
+  hideAuthNotice();
+
+  try {
+    const { data, error } = await db.auth.signInWithPassword({ email, password: pass });
+    btn.disabled = false; btn.textContent = 'Sign In';
+
+    if (error) {
+      if (isEmailNotConfirmedError(error)) {
+        showAuthNotice({
+          type: 'warning',
+          title: 'Email Verification Pending',
+          body: `The account for <strong>${escapeHtml(email)}</strong> is registered, but your email has not been confirmed yet.
+                 <br>Please check your <strong>inbox and spam/junk folder</strong> for the verification link.`,
+          actions: [
+            {
+              label: getResendCooldownRemaining() > 0 ? `Resend in ${getResendCooldownRemaining()}s` : 'Resend Verification Email',
+              isResend: true,
+              isPrimary: true,
+              onClick: (b) => handleResendVerification(email, b)
+            }
+          ]
+        });
+      } else if (isRateLimitError(error)) {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Sign In Rate Limit',
+          body: 'Too many sign-in attempts. Please wait a moment before trying again.'
+        });
+      } else if (/invalid login credentials/i.test(error.message)) {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Sign In Failed',
+          body: 'Incorrect email or password. Please verify your credentials and try again.'
+        });
+        fieldError('login-pass', 'Incorrect email or password.');
+      } else {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Sign In Failed',
+          body: escapeHtml(error.message)
+        });
+      }
+    } else {
+      hideAuthNotice();
+    }
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'Sign In';
+    showToast(err.message || 'An error occurred during sign in.', 'error');
+  }
 });
 
 // ─ Register ────────────────────────────────────────────────
@@ -167,25 +486,130 @@ $('form-register').addEventListener('submit', async e => {
 
   const btn = e.submitter;
   btn.disabled = true; btn.textContent = 'Creating account…';
-  const { error } = await db.auth.signUp({ email, password: pass });
-  btn.disabled = false; btn.textContent = 'Create Account';
-  if (error) showToast(error.message, 'error');
-  else showToast('Account created! Check your email to confirm, then sign in.', 'success');
+  hideAuthNotice();
+
+  try {
+    const { data, error } = await db.auth.signUp({ email, password: pass });
+    btn.disabled = false; btn.textContent = 'Create Account';
+
+    if (error) {
+      if (isRateLimitError(error)) {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Email Rate Limit Exceeded',
+          body: `Supabase's built-in email service has reached its hourly delivery limit.
+                 <br><br>
+                 If you already created an account for <strong>${escapeHtml(email)}</strong>:
+                 <br>
+                 • Your confirmation email was already sent — please search your <strong>inbox and spam/junk folder</strong>.
+                 <br>
+                 • If you already clicked the link earlier, please <strong>Sign In</strong>.
+                 <br>
+                 • Built-in SMTP quota resets every hour.
+                 <br>
+                 • <em>School/Admin note:</em> A project administrator can also activate your account manually in the <strong>Supabase Dashboard → Authentication → Users</strong> without waiting.`,
+          actions: [
+            {
+              label: 'Switch to Sign In',
+              isPrimary: true,
+              onClick: () => switchAuthTab('login', email)
+            },
+            {
+              label: getResendCooldownRemaining() > 0 ? `Resend in ${getResendCooldownRemaining()}s` : 'Resend Verification Email',
+              isResend: true,
+              onClick: (b) => handleResendVerification(email, b)
+            }
+          ]
+        });
+      } else if (isUserAlreadyRegisteredError(error)) {
+        showAuthNotice({
+          type: 'warning',
+          title: 'Account Already Exists',
+          body: `An account for <strong>${escapeHtml(email)}</strong> is already registered. If you have not verified your email yet, you can resend the link.`,
+          actions: [
+            {
+              label: 'Switch to Sign In',
+              isPrimary: true,
+              onClick: () => switchAuthTab('login', email)
+            },
+            {
+              label: getResendCooldownRemaining() > 0 ? `Resend in ${getResendCooldownRemaining()}s` : 'Resend Verification Email',
+              isResend: true,
+              onClick: (b) => handleResendVerification(email, b)
+            }
+          ]
+        });
+      } else {
+        showAuthNotice({
+          type: 'danger',
+          title: 'Registration Error',
+          body: escapeHtml(error.message)
+        });
+      }
+      return;
+    }
+
+    // Check user enumeration protection: existing verified user returns data.user with empty identities []
+    if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      showAuthNotice({
+        type: 'warning',
+        title: 'Account Already Exists',
+        body: `An account with <strong>${escapeHtml(email)}</strong> is already registered. If you already verified your email, please sign in. If you still need to verify your account, you can request another verification email.`,
+        actions: [
+          {
+            label: 'Switch to Sign In',
+            isPrimary: true,
+            onClick: () => switchAuthTab('login', email)
+          },
+          {
+            label: getResendCooldownRemaining() > 0 ? `Resend in ${getResendCooldownRemaining()}s` : 'Resend Verification Email',
+            isResend: true,
+            onClick: (b) => handleResendVerification(email, b)
+          }
+        ]
+      });
+      return;
+    }
+
+    // Immediate session (e.g., if auto-confirm is active)
+    if (data?.session) {
+      showToast('Account created and signed in!', 'success');
+      return;
+    }
+
+    // Standard new account requiring confirmation
+    if (data?.user) {
+      startResendCooldown(60);
+      showAuthNotice({
+        type: 'success',
+        title: 'Account Created — Verify Email',
+        body: `A confirmation link has been sent to <strong>${escapeHtml(email)}</strong>. Please click the link in your email to activate your account, then sign in.
+               <small>Tip: Check your spam or junk folder if the email does not appear within a minute.</small>`,
+        actions: [
+          {
+            label: 'Proceed to Sign In',
+            isPrimary: true,
+            onClick: () => switchAuthTab('login', email)
+          },
+          {
+            label: 'Resend Verification Email',
+            isResend: true,
+            disabled: true,
+            onClick: (b) => handleResendVerification(email, b)
+          }
+        ]
+      });
+      $('login-email').value = email;
+    }
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'Create Account';
+    showToast(err.message || 'An error occurred during account creation.', 'error');
+  }
 });
 
 // ─ Logout ──────────────────────────────────────────────────
 $('btn-logout').addEventListener('click', async () => {
   await db.auth.signOut();
-});
-
-// ─ Auth tab toggle ─────────────────────────────────────────
-document.querySelectorAll('.auth-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    $('login-form').style.display = btn.dataset.tab === 'login' ? 'block' : 'none';
-    $('register-form').style.display = btn.dataset.tab === 'register' ? 'block' : 'none';
-  });
 });
 
 // ============================================================
@@ -2185,11 +2609,7 @@ $('form-followup').addEventListener('submit', async e => {
 // ============================================================
 // 14. HELPERS
 // ============================================================
-function escHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// (Note: escapeHtml and escHtml are defined in Section 4 Utility Helpers)
 
 function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

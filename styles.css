@@ -401,6 +401,201 @@ textarea {
   color: var(--teal-bright);
 }
 
+/* ── Auth Notice & Recovery Box ──────────────────────────── */
+.auth-notice {
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.35rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+  animation: noticeFadeIn 220ms var(--ease-smooth);
+  position: relative;
+  text-align: left;
+}
+
+@keyframes noticeFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.auth-notice.danger {
+  background: var(--danger-light);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #991b1b;
+}
+
+[data-theme="dark"] .auth-notice.danger {
+  background: rgba(220, 38, 38, 0.16);
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #fca5a5;
+}
+
+.auth-notice.warning {
+  background: var(--warning-light);
+  border-color: rgba(217, 119, 6, 0.35);
+  color: #92400e;
+}
+
+[data-theme="dark"] .auth-notice.warning {
+  background: rgba(217, 119, 6, 0.16);
+  border-color: rgba(217, 119, 6, 0.45);
+  color: #fcd34d;
+}
+
+.auth-notice.success {
+  background: var(--success-light);
+  border-color: rgba(22, 163, 74, 0.35);
+  color: #166534;
+}
+
+[data-theme="dark"] .auth-notice.success {
+  background: rgba(22, 163, 74, 0.16);
+  border-color: rgba(22, 163, 74, 0.45);
+  color: #86efac;
+}
+
+.auth-notice.info {
+  background: var(--info-light);
+  border-color: rgba(8, 145, 178, 0.35);
+  color: #155e75;
+}
+
+[data-theme="dark"] .auth-notice.info {
+  background: rgba(8, 145, 178, 0.16);
+  border-color: rgba(8, 145, 178, 0.45);
+  color: #67e8f9;
+}
+
+.auth-notice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  font-size: 0.88rem;
+  padding-right: 1.5rem;
+}
+
+.auth-notice-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-sm);
+  transition: opacity 150ms ease;
+}
+
+.auth-notice-close:hover {
+  opacity: 1;
+}
+
+.auth-notice-body {
+  margin-bottom: 0.65rem;
+  font-size: 0.83rem;
+  color: inherit;
+}
+
+.auth-notice-body strong {
+  color: inherit;
+  font-weight: 600;
+}
+
+.auth-notice-body small {
+  display: block;
+  margin-top: 0.35rem;
+  opacity: 0.88;
+  font-size: 0.77rem;
+}
+
+.auth-notice-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.auth-notice-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.79rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+  transition: all 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+}
+
+[data-theme="dark"] .auth-notice-btn {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.auth-notice-btn.primary {
+  background: var(--teal);
+  color: #ffffff !important;
+  border-color: var(--teal);
+}
+
+.auth-notice-btn.primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.auth-notice-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .auth-notice-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.auth-notice-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.auth-alt-link {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--teal);
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  text-decoration: underline;
+  transition: color 150ms ease;
+}
+
+.btn-text-link:hover {
+  color: var(--primary-dark);
+}
+
+[data-theme="dark"] .btn-text-link {
+  color: var(--teal-bright);
+}
+
 /* ── App Layout ──────────────────────────────────────────── */
 #app-section {
   display: none;

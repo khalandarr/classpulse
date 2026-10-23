@@ -47,10 +47,21 @@
         with your actual Supabase project credentials before using the app.
       </div>
 
+      <!-- Auth Notice Box (for clear signup error messages, unverified account recovery, rate limit explanations) -->
+      <div id="auth-notice" class="auth-notice" style="display:none;" role="alert" aria-live="polite">
+        <button type="button" class="auth-notice-close" id="auth-notice-close" aria-label="Dismiss message">&times;</button>
+        <div class="auth-notice-header">
+          <span class="auth-notice-icon" id="auth-notice-icon"></span>
+          <span class="auth-notice-title" id="auth-notice-title"></span>
+        </div>
+        <div class="auth-notice-body" id="auth-notice-body"></div>
+        <div class="auth-notice-actions" id="auth-notice-actions"></div>
+      </div>
+
       <!-- Tabs -->
       <div class="auth-tabs">
-        <button class="auth-tab active" data-tab="login">Sign In</button>
-        <button class="auth-tab" data-tab="register">Register</button>
+        <button class="auth-tab active" data-tab="login" id="tab-login-btn">Sign In</button>
+        <button class="auth-tab" data-tab="register" id="tab-register-btn">Register</button>
       </div>
 
       <!-- Login Form -->
@@ -70,6 +81,10 @@
           </div>
           <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:.25rem">Sign
             In</button>
+          <div class="auth-alt-link">
+            <span>Don't have an account?</span>
+            <button type="button" class="btn-text-link" id="link-to-register">Register</button>
+          </div>
         </form>
       </div>
 
@@ -96,6 +111,10 @@
           </div>
           <button type="submit" class="btn btn-primary"
             style="width:100%;justify-content:center;margin-top:.25rem">Create Account</button>
+          <div class="auth-alt-link">
+            <span>Already have an account?</span>
+            <button type="button" class="btn-text-link" id="link-to-login">Sign In</button>
+          </div>
         </form>
       </div>
     </div>
